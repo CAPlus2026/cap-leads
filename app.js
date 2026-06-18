@@ -153,7 +153,7 @@ function renderSummaryBar() {
   const pipeline = leads
     .filter(l => l.status !== 'Lost' && l.status !== 'Sold' && l.status !== 'Sold (Delayed)')
     .reduce((s, l) => s + (parseFloat(l.sale_amount) || 0), 0);
-  const sold = leads.filter(l => l.status === 'Sold' || l.status === 'Sold (Delayed)').length;
+  const sold = leads.filter(l => (l.status === 'Sold' || l.status === 'Sold (Delayed)') && !l.job_complete_date).length;
   const backlog = leads
     .filter(l => (l.status === 'Sold' || l.status === 'Sold (Delayed)') && !l.job_complete_date)
     .reduce((s, l) => s + (parseFloat(l.sale_amount) || 0), 0);
@@ -298,12 +298,34 @@ async function openLeadDrawer(lead) {
     ` : ''}
   `;
 
+  const isComplete = lead.job_complete_date && lead.job_complete_date !== '';
   document.getElementById('drawer-footer').innerHTML = `
     <button class="btn btn-secondary btn-sm" id="btn-edit-lead">Edit Lead</button>
+    ${isSold ? (isComplete
+      ? `<span class="badge badge-sold" style="padding:7px 14px;font-size:12px">✓ Completed ${fmtDate(lead.job_complete_date)}</span>`
+      : `<button class="btn btn-green btn-sm" id="btn-mark-complete">Mark Complete</button>`
+    ) : ''}
   `;
   document.getElementById('btn-edit-lead').addEventListener('click', () => openEditLeadModal(lead));
+  if (isSold && !isComplete) {
+    document.getElementById('btn-mark-complete').addEventListener('click', () => markLeadComplete(lead));
+  }
 
   openDrawer('lead-drawer');
+}
+
+async function markLeadComplete(lead) {
+  if (!confirm(`Mark "${lead.job_name}" as complete today?`)) return;
+  const today = new Date().toISOString().split('T')[0];
+  try {
+    await apiPost('updateLead', { payload: { ...lead, job_complete_date: today } });
+    showToast('Job marked complete!');
+    await loadAll();
+    const updated = state.leads.find(l => l.lead_id === lead.lead_id);
+    if (updated) openLeadDrawer(updated);
+  } catch(e) {
+    showToast('Error: ' + e.message, true);
+  }
 }
 
 function milestone(val, label, date) {
