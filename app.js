@@ -155,7 +155,7 @@ function renderSummaryBar() {
     .reduce((s, l) => s + (parseFloat(l.sale_amount) || 0), 0);
   const sold = leads.filter(l => l.status === 'Sold' || l.status === 'Sold (Delayed)').length;
   const backlog = leads
-    .filter(l => l.status === 'Sold' || l.status === 'Sold (Delayed)')
+    .filter(l => (l.status === 'Sold' || l.status === 'Sold (Delayed)') && !l.job_complete_date)
     .reduce((s, l) => s + (parseFloat(l.sale_amount) || 0), 0);
 
   document.getElementById('leads-summary').innerHTML = `
