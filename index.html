@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CAP Commercial Lead Tracker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header class="app-header">
+  <div style="display:flex;align-items:center;gap:8px">
+    <h1>CAP Commercial Lead Tracker</h1>
+    <span class="header-sub" id="header-sub"></span>
+  </div>
+  <button class="btn btn-primary btn-sm" id="btn-new-lead">+ New Lead</button>
+</header>
+
+<!-- ── TAB NAV ── -->
+<nav class="tab-nav">
+  <button class="tab-btn active" data-tab="leads">Leads</button>
+  <button class="tab-btn" data-tab="commission">Commission</button>
+  <button class="tab-btn" data-tab="builders">Builder Contacts</button>
+</nav>
+
+<!-- ── MAIN ── -->
+<div class="main" id="main">
+
+  <!-- ── LEADS TAB ── -->
+  <div id="tab-leads" class="tab-content active">
+    <div class="summary-bar" id="leads-summary"></div>
+    <div class="filters-row">
+      <div class="filter-chips" id="status-chips">
+        <button class="chip active" data-status="all">All</button>
+        <button class="chip" data-status="active">Active</button>
+        <button class="chip" data-status="sold">Sold</button>
+        <button class="chip" data-status="lost">Lost</button>
+      </div>
+      <select class="filter-select" id="type-filter">
+        <option value="all">All Types</option>
+        <option value="New Construction">New Construction</option>
+        <option value="Remodel">Remodel</option>
+        <option value="Changeout">Changeout</option>
+      </select>
+      <select class="filter-select" id="assignee-filter">
+        <option value="all">All Salespeople</option>
+        <option value="Derrick">Derrick</option>
+        <option value="Ronnie">Ronnie</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table id="leads-table">
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Amount</th>
+            <th>Assigned</th>
+            <th>Est. Start</th>
+            <th>Days Budgeted</th>
+            <th>Subs</th>
+            <th>Billing Progress</th>
+          </tr>
+        </thead>
+        <tbody id="leads-tbody">
+          <tr><td colspan="9" class="loading">Loading leads…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── COMMISSION TAB ── -->
+  <div id="tab-commission" class="tab-content">
+    <div class="commission-filters">
+      <select class="filter-select" id="comm-period-filter">
+        <option value="all">All Pay Periods</option>
+      </select>
+      <select class="filter-select" id="comm-status-filter">
+        <option value="all">All Statuses</option>
+        <option value="Pending">Pending</option>
+        <option value="Paid">Paid</option>
+      </select>
+      <button class="btn btn-secondary btn-sm ml-auto" id="btn-export-payroll">⬇ Export Payroll PDF</button>
+    </div>
+    <div class="formula-note-bar">
+      Commission formula: (Sale Amount − Accessories/Memberships Revenue) × 2% + Spiffs. Paid at job completion.
+    </div>
+    <div class="summary-cards" id="comm-summary"></div>
+    <div class="table-wrap">
+      <table id="commission-table">
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Sale Amt</th>
+            <th>Acc/Mem Deduction</th>
+            <th>Net Sale</th>
+            <th>Base (2%)</th>
+            <th>Spiffs</th>
+            <th>Total Payout</th>
+            <th>Complete Date</th>
+            <th>Paid On</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="commission-tbody">
+          <tr><td colspan="10" class="loading">Loading commission data…</td></tr>
+        </tbody>
+        <tfoot id="commission-tfoot"></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── BUILDERS TAB ── -->
+  <div id="tab-builders" class="tab-content">
+    <div class="filters-row">
+      <select class="filter-select" id="builder-status-filter">
+        <option value="all">All Statuses</option>
+        <option value="Hot">Hot</option>
+        <option value="Warm">Warm</option>
+        <option value="Cool">Cool</option>
+      </select>
+      <button class="btn btn-primary btn-sm ml-auto" id="btn-new-builder">+ Add Builder</button>
+    </div>
+    <div class="table-wrap">
+      <table id="builders-table">
+        <thead>
+          <tr>
+            <th>Company</th>
+            <th>Contact</th>
+            <th>Status</th>
+            <th>Last Contact</th>
+            <th>Next Touchpoint</th>
+            <th>Open Leads</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="builders-tbody">
+          <tr><td colspan="7" class="loading">Loading builders…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- ── DETAIL DRAWER ── -->
+<div class="drawer" id="lead-drawer">
+  <div class="drawer-header">
+    <h2 id="drawer-title">Lead Details</h2>
+    <button class="drawer-close" id="drawer-close">✕</button>
+  </div>
+  <div class="drawer-body" id="drawer-body"></div>
+  <div class="drawer-footer" id="drawer-footer"></div>
+</div>
+
+<!-- ── BUILDER DRAWER ── -->
+<div class="drawer" id="builder-drawer">
+  <div class="drawer-header">
+    <h2 id="bdr-title">Builder Details</h2>
+    <button class="drawer-close" id="bdr-close">✕</button>
+  </div>
+  <div class="drawer-body" id="bdr-body"></div>
+  <div class="drawer-footer" id="bdr-footer"></div>
+</div>
+
+<!-- ── LEAD MODAL ── -->
+<div class="modal-overlay" id="lead-modal-overlay">
+  <div class="modal" id="lead-modal">
+    <div class="modal-header">
+      <h2 id="lead-modal-title">New Lead</h2>
+      <button class="drawer-close" id="lead-modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="lead-form" autocomplete="off">
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Job Name <span class="req">*</span></label>
+            <input type="text" name="job_name" required>
+          </div>
+          <div class="form-group">
+            <label>Assigned To <span class="req">*</span></label>
+            <select name="assigned_to" required>
+              <option value="">Select…</option>
+              <option>Derrick</option>
+              <option>Ronnie</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Project Address <span class="req">*</span></label>
+          <input type="text" name="address" required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Project Type <span class="req">*</span></label>
+            <select name="project_type" required>
+              <option value="">Select…</option>
+              <option>Changeout</option>
+              <option>Remodel</option>
+              <option>New Construction</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Status <span class="req">*</span></label>
+            <select name="status" id="form-status" required>
+              <option value="">Select…</option>
+              <option>Bid Submitted</option>
+              <option>Waiting Approval</option>
+              <option>Waiting Load Calc</option>
+              <option>Sold</option>
+              <option>Sold (Delayed)</option>
+              <option>Lost</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Total Bid / Sale Amount <span class="req">*</span></label>
+          <input type="number" name="sale_amount" step="0.01" min="0" required>
+        </div>
+
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea name="notes"></textarea>
+        </div>
+
+        <!-- ── SOLD FIELDS (shown when status = Sold / Sold Delayed) ── -->
+        <div id="sold-fields" class="hidden">
+          <div class="form-divider">Contract Details</div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Customer / Billing Name</label>
+              <input type="text" name="billing_name">
+            </div>
+            <div class="form-group">
+              <label>Est. Start Month</label>
+              <input type="month" name="est_start_month">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Total Days Budgeted</label>
+              <input type="number" name="total_days_budgeted" min="0">
+            </div>
+            <div class="form-group">
+              <label>Subs Needed?</label>
+              <select name="subs_needed">
+                <option value="">Select…</option>
+                <option>Yes</option>
+                <option>No</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Remodel / New Construction only -->
+          <div id="phase-fields" class="hidden">
+            <div class="form-divider">Phase Breakdown</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Rough-in CAP Days</label>
+                <input type="number" name="rough_cap_days" min="0">
+              </div>
+              <div class="form-group">
+                <label>Rough-in Sub Days</label>
+                <input type="number" name="rough_sub_days" min="0">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Trim CAP Days</label>
+                <input type="number" name="trim_cap_days" min="0">
+              </div>
+              <div class="form-group">
+                <label>Trim Sub Days</label>
+                <input type="number" name="trim_sub_days" min="0">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-divider">Milestones</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label><input type="checkbox" name="permit_pulled" style="margin-right:5px">Permit Pulled</label>
+              <input type="date" name="permit_date" style="margin-top:4px">
+            </div>
+            <div class="form-group">
+              <label><input type="checkbox" name="inspection_scheduled" style="margin-right:5px">Inspection Scheduled</label>
+              <input type="date" name="inspection_date" style="margin-top:4px">
+            </div>
+          </div>
+          <div class="form-group">
+            <label><input type="checkbox" name="equipment_ordered" style="margin-right:5px">Equipment Ordered</label>
+            <input type="date" name="equipment_order_date" style="margin-top:4px">
+          </div>
+
+          <div class="form-divider">Accessories &amp; Memberships Sold</div>
+          <div class="item-selector">
+            <div class="item-selector-row header">
+              <span>Item</span><span>Qty</span><span>Price</span><span>Spiff</span><span></span>
+            </div>
+            <div id="item-rows"></div>
+            <button type="button" class="btn-add-item" id="btn-add-item">+ Add Item</button>
+            <div class="item-selector-totals" id="item-totals">
+              <div class="tot-row"><span>Acc + Mem Revenue (deduction):</span><span id="tot-acc">$0.00</span></div>
+              <div class="tot-row"><span>Total Spiffs:</span><span id="tot-spiff">$0.00</span></div>
+              <div class="tot-row"><span>Sale Amount:</span><span id="tot-sale">$0.00</span></div>
+              <div class="tot-row" style="font-weight:600"><span>Est. Base Commission (2%):</span><span id="tot-comm">$0.00</span></div>
+              <div class="formula-note">(Sale − Acc/Mem) × 2% = Base Commission</div>
+            </div>
+          </div>
+
+          <div class="form-divider">Progress Billing</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Rough-in Amount</label>
+              <input type="number" name="billing_rough_amount" step="0.01" min="0">
+            </div>
+            <div class="form-group">
+              <label>Rough-in Date</label>
+              <input type="date" name="billing_rough_date">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Trim Amount</label>
+              <input type="number" name="billing_trim_amount" step="0.01" min="0">
+            </div>
+            <div class="form-group">
+              <label>Trim Date</label>
+              <input type="date" name="billing_trim_date">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Other / Misc Amount</label>
+              <input type="number" name="billing_other_amount" step="0.01" min="0">
+            </div>
+            <div class="form-group">
+              <label>Other Date</label>
+              <input type="date" name="billing_other_date">
+            </div>
+          </div>
+        </div><!-- /sold-fields -->
+
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="lead-modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="lead-modal-save">Save Lead</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── BUILDER MODAL ── -->
+<div class="modal-overlay" id="builder-modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="builder-modal-title">Add Builder / Contractor</h2>
+      <button class="drawer-close" id="builder-modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="builder-form" autocomplete="off">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Company Name <span class="req">*</span></label>
+            <input type="text" name="company_name" required>
+          </div>
+          <div class="form-group">
+            <label>Contact Name</label>
+            <input type="text" name="contact_name">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Phone</label>
+            <input type="tel" name="phone">
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" name="email">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select name="status">
+            <option>Hot</option>
+            <option selected>Warm</option>
+            <option>Cool</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea name="notes"></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="builder-modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="builder-modal-save">Save Builder</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── LOG CONTACT MODAL ── -->
+<div class="modal-overlay" id="log-modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Log Contact</h2>
+      <button class="drawer-close" id="log-modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="log-form" autocomplete="off">
+        <input type="hidden" name="builder_id">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Contact Date <span class="req">*</span></label>
+            <input type="date" name="contact_date" required>
+          </div>
+          <div class="form-group">
+            <label>Method</label>
+            <select name="contact_method">
+              <option>Call</option>
+              <option>Email</option>
+              <option>In Person</option>
+              <option>Text</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea name="notes"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Next Planned Contact</label>
+          <input type="date" name="next_planned_contact">
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="log-modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="log-modal-save">Log Contact</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── TOAST ── -->
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
