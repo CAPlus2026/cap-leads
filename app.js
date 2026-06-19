@@ -182,8 +182,8 @@ function renderLeadsTable() {
     const isLost    = l.status === 'Lost';
     const rowClass  = isSold && !isDelayed ? 'row-sold' : (isDelayed ? 'row-delayed' : (isLost ? 'row-lost' : ''));
 
-    const roughAmt  = parseFloat(l.billing_rough_amount) || 0;
-    const trimAmt   = parseFloat(l.billing_trim_amount)  || 0;
+    const roughAmt  = l.billing_rough_date ? (parseFloat(l.billing_rough_amount) || 0) : 0;
+    const trimAmt   = l.billing_trim_date  ? (parseFloat(l.billing_trim_amount)  || 0) : 0;
     const saleAmt   = parseFloat(l.sale_amount) || 1;
     const roughPct  = Math.min(100, (roughAmt / saleAmt) * 100);
     const trimPct   = Math.min(100 - roughPct, (trimAmt / saleAmt) * 100);
@@ -235,7 +235,17 @@ async function openLeadDrawer(lead) {
       <h3>Project Info</h3>
       <div class="detail-row"><span class="label">Address</span><span class="value">${esc(lead.address||'—')}</span></div>
       <div class="detail-row"><span class="label">Type</span><span class="value">${typeBadge(lead.project_type)}</span></div>
-      <div class="detail-row"><span class="label">Status</span><span class="value">${statusBadge(lead.status)}${isSold ? ' <span class="badge badge-notified">Caleb notified</span>' : ''}</span></div>
+      <div class="detail-row"><span class="label">Status</span><span class="value">
+        <select id="drawer-status-select" style="border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:13px;background:var(--surface)">
+          <option ${lead.status==='Bid Submitted'?'selected':''}>Bid Submitted</option>
+          <option ${lead.status==='Waiting Approval'?'selected':''}>Waiting Approval</option>
+          <option ${lead.status==='Waiting Load Calc'?'selected':''}>Waiting Load Calc</option>
+          <option ${lead.status==='Sold'?'selected':''}>Sold</option>
+          <option ${lead.status==='Sold (Delayed)'?'selected':''}>Sold (Delayed)</option>
+          <option ${lead.status==='Lost'?'selected':''}>Lost</option>
+        </select>
+        ${isSold ? '<span class="badge badge-notified">Caleb notified</span>' : ''}
+      </span></div>
       <div class="detail-row"><span class="label">Assigned To</span><span class="value">${esc(lead.assigned_to||'—')}</span></div>
       <div class="detail-row"><span class="label">Sale Amount</span><span class="value blue">${fmt$(lead.sale_amount)}</span></div>
       ${lead.notes ? `<div class="detail-row"><span class="label">Notes</span><span class="value" style="max-width:180px;text-align:right">${esc(lead.notes)}</span></div>` : ''}
@@ -284,9 +294,9 @@ async function openLeadDrawer(lead) {
 
     <div class="drawer-section">
       <h3>Milestones</h3>
-      ${milestone(lead.permit_pulled, 'Permit Pulled', lead.permit_date)}
-      ${milestone(lead.inspection_scheduled, 'Inspection Scheduled', lead.inspection_date)}
-      ${milestone(lead.equipment_ordered, 'Equipment Ordered', lead.equipment_order_date)}
+      ${milestoneCheck('permit_pulled', 'Permit Pulled', lead.permit_pulled, lead.permit_date, lead.lead_id)}
+      ${milestoneCheck('inspection_scheduled', 'Inspection Scheduled', lead.inspection_scheduled, lead.inspection_date, lead.lead_id)}
+      ${milestoneCheck('equipment_ordered', 'Equipment Ordered', lead.equipment_ordered, lead.equipment_order_date, lead.lead_id)}
     </div>
 
     <div class="drawer-section">
@@ -311,6 +321,35 @@ async function openLeadDrawer(lead) {
     document.getElementById('btn-mark-complete').addEventListener('click', () => markLeadComplete(lead));
   }
 
+  document.getElementById('drawer-status-select').addEventListener('change', async function() {
+    const newStatus = this.value;
+    try {
+      await apiPost('updateLead', { payload: { ...lead, status: newStatus } });
+      showToast('Status updated!');
+      await loadAll();
+      const updated = state.leads.find(l => l.lead_id === lead.lead_id);
+      if (updated) openLeadDrawer(updated);
+    } catch(e) {
+      showToast('Error: ' + e.message, true);
+    }
+  });
+
+  document.querySelectorAll('.milestone-toggle').forEach(cb => {
+    cb.addEventListener('change', async function() {
+      const field = this.dataset.field;
+      const val = this.checked ? 'TRUE' : 'FALSE';
+      try {
+        await apiPost('updateLead', { payload: { ...lead, [field]: val } });
+        showToast('Milestone updated!');
+        await loadAll();
+        const updated = state.leads.find(l => l.lead_id === lead.lead_id);
+        if (updated) openLeadDrawer(updated);
+      } catch(e) {
+        showToast('Error: ' + e.message, true);
+      }
+    });
+  });
+
   openDrawer('lead-drawer');
 }
 
@@ -328,11 +367,14 @@ async function markLeadComplete(lead) {
   }
 }
 
-function milestone(val, label, date) {
+function milestoneCheck(field, label, val, date, leadId) {
   const done = val === true || val === 'TRUE' || val === 'true';
   return `<div class="milestone-row">
-    <span class="${done ? 'check' : 'uncheck'}">${done ? '✓' : '○'}</span>
-    <span>${label}${done && date ? ' · ' + fmtDate(date) : ''}</span>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" class="milestone-toggle" data-field="${field}" data-lead="${leadId}" ${done ? 'checked' : ''}
+        style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+      <span class="${done ? 'check' : ''}">${label}${done && date ? ' · ' + fmtDate(date) : ''}</span>
+    </label>
   </div>`;
 }
 
@@ -413,6 +455,19 @@ async function openEditLeadModal(lead) {
 async function saveLeadForm() {
   const form = document.getElementById('lead-form');
   if (!form.checkValidity()) { form.reportValidity(); return; }
+
+  // Validate days: if phase fields are visible, total must equal sum of phases
+  const totalDays = parseFloat(form.elements.total_days_budgeted?.value) || 0;
+  const roughCap  = parseFloat(form.elements.rough_cap_days?.value) || 0;
+  const roughSub  = parseFloat(form.elements.rough_sub_days?.value) || 0;
+  const trimCap   = parseFloat(form.elements.trim_cap_days?.value)  || 0;
+  const trimSub   = parseFloat(form.elements.trim_sub_days?.value)  || 0;
+  const phaseSum  = roughCap + roughSub + trimCap + trimSub;
+  const phaseVisible = !document.getElementById('phase-fields').classList.contains('hidden');
+  if (phaseVisible && totalDays > 0 && phaseSum > 0 && phaseSum !== totalDays) {
+    showToast(`Phase days (${phaseSum}) must equal Total Days Budgeted (${totalDays})`, true);
+    return;
+  }
 
   const btn = document.getElementById('lead-modal-save');
   btn.textContent = 'Saving…';
@@ -621,8 +676,10 @@ async function updateCommissionField(leadId, field, value) {
 }
 
 function exportPayroll() {
-  const rows = filteredCommission();
-  if (!rows.length) { showToast('No data to export', true); return; }
+  const allRows = filteredCommission();
+  // Only export jobs that have a completion date (invoiceable/payable jobs)
+  const rows = allRows.filter(c => c.job_complete_date && c.job_complete_date !== '');
+  if (!rows.length) { showToast('No completed jobs to export for this period', true); return; }
 
   const period = state.commFilters.period !== 'all' ? state.commFilters.period : 'All Periods';
   const totalPayout = rows.reduce((s,c) => s+(parseFloat(c.total_payout)||0),0);
