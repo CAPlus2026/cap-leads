@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupBuilderModal();
   setupLogModal();
   setupFollowUpModal();
+  setupSoldDetailsModal();
   setupDrawerClose();
 
   if (SCRIPT_URL.startsWith('PASTE')) {
@@ -191,6 +192,7 @@ function filteredLeads() {
 
 function renderSummaryBar() {
   const leads = state.leads;
+  const today = new Date().toISOString().split('T')[0];
   const pipeline = leads
     .filter(l => l.status !== 'Lost' && l.status !== 'Sold' && l.status !== 'Sold (Delayed)')
     .reduce((s, l) => s + (parseFloat(l.sale_amount) || 0), 0);
@@ -198,13 +200,26 @@ function renderSummaryBar() {
   const backlog = leads
     .filter(l => (l.status === 'Sold' || l.status === 'Sold (Delayed)') && !l.job_complete_date)
     .reduce((s, l) => s + (parseFloat(l.sale_amount) || 0), 0);
+  const soldTotal = leads.filter(l => l.status === 'Sold' || l.status === 'Sold (Delayed)').length;
+  const lostTotal = leads.filter(l => l.status === 'Lost').length;
+  const winRate = (soldTotal + lostTotal) > 0 ? Math.round((soldTotal / (soldTotal + lostTotal)) * 100) : null;
+  const followupsDue = leads.filter(l => {
+    const isSold = l.status === 'Sold' || l.status === 'Sold (Delayed)';
+    const isLost = l.status === 'Lost';
+    return !isSold && !isLost && l.next_followup_date && String(l.next_followup_date).split('T')[0] < today;
+  }).length;
 
   document.getElementById('leads-summary').innerHTML = `
     <div class="stat-card"><div class="stat-label">Total Leads</div><div class="stat-value blue">${leads.length}</div></div>
     <div class="stat-card"><div class="stat-label">Pipeline Value</div><div class="stat-value">${fmt$(pipeline)}</div></div>
     <div class="stat-card"><div class="stat-label">Sold Jobs</div><div class="stat-value green">${sold}</div></div>
     <div class="stat-card"><div class="stat-label">Committed Backlog</div><div class="stat-value green">${fmt$(backlog)}</div></div>
-    <div class="stat-card"><div class="stat-label">Lost</div><div class="stat-value" style="color:var(--gray)">${leads.filter(l=>l.status==='Lost').length}</div></div>
+    ${followupsDue > 0
+      ? `<div class="stat-card"><div class="stat-label">Follow-Ups Due</div><div class="stat-value amber">${followupsDue}</div></div>`
+      : `<div class="stat-card"><div class="stat-label">Follow-Ups Due</div><div class="stat-value" style="color:var(--gray)">0</div></div>`}
+    ${winRate !== null
+      ? `<div class="stat-card"><div class="stat-label">Win Rate</div><div class="stat-value blue">${winRate}%</div></div>`
+      : ''}
   `;
 }
 
@@ -222,7 +237,9 @@ function renderLeadsTable() {
     const isDelayed  = l.status === 'Sold (Delayed)';
     const isLost     = l.status === 'Lost';
     const isComplete = !!(l.job_complete_date && l.job_complete_date !== '');
-    const rowClass   = isComplete ? 'row-complete' : (isSold && !isDelayed ? 'row-sold' : (isDelayed ? 'row-delayed' : (isLost ? 'row-lost' : '')));
+    const today      = new Date().toISOString().split('T')[0];
+    const isOverdue  = !isSold && !isLost && !isComplete && l.next_followup_date && String(l.next_followup_date).split('T')[0] < today;
+    const rowClass   = isComplete ? 'row-complete' : isOverdue ? 'row-followup-due' : (isSold && !isDelayed ? 'row-sold' : (isDelayed ? 'row-delayed' : (isLost ? 'row-lost' : '')));
 
     const roughAmt  = l.billing_rough_date ? (parseFloat(l.billing_rough_amount) || 0) : 0;
     const trimAmt   = l.billing_trim_date  ? (parseFloat(l.billing_trim_amount)  || 0) : 0;
@@ -230,10 +247,24 @@ function renderLeadsTable() {
     const roughPct  = Math.min(100, (roughAmt / saleAmt) * 100);
     const trimPct   = Math.min(100 - roughPct, (trimAmt / saleAmt) * 100);
 
+    const ageDays   = l.created_date ? Math.floor((Date.now() - new Date(l.created_date)) / 86400000) : null;
+    const ageHtml   = ageDays !== null && !isSold && !isLost && !isComplete
+      ? `<div class="lead-age${ageDays > 30 ? ' stale' : ''}">${ageDays}d old${isOverdue ? ' · ⚠ follow-up overdue' : ''}</div>`
+      : (isOverdue ? '<div class="lead-age stale">⚠ follow-up overdue</div>' : '');
+
     return `<tr class="${rowClass}" data-id="${l.lead_id}">
-      <td><strong>${esc(l.job_name)}</strong><br><small style="color:var(--gray)">${esc(l.address||'')}</small></td>
+      <td><strong>${esc(l.job_name)}</strong><br><small style="color:var(--gray)">${esc(l.address||'')}</small>${ageHtml}</td>
       <td>${typeBadge(l.project_type)}</td>
-      <td>${statusBadge(l.status)}</td>
+      <td onclick="event.stopPropagation()">
+        <select class="status-select ${statusSelectClass(l.status)}" data-id="${l.lead_id}" onchange="quickStatusChange(this)">
+          <option ${l.status==='Bid Submitted'?'selected':''}>Bid Submitted</option>
+          <option ${l.status==='Waiting Approval'?'selected':''}>Waiting Approval</option>
+          <option ${l.status==='Waiting Load Calc'?'selected':''}>Waiting Load Calc</option>
+          <option ${l.status==='Sold'?'selected':''}>Sold</option>
+          <option ${l.status==='Sold (Delayed)'?'selected':''}>Sold (Delayed)</option>
+          <option ${l.status==='Lost'?'selected':''}>Lost</option>
+        </select>
+      </td>
       <td>${fmt$(l.sale_amount)}</td>
       <td>${esc(l.assigned_to||'')}</td>
       <td>${fmtMonth(l.est_start_month)}</td>
@@ -397,14 +428,20 @@ async function openLeadDrawer(lead) {
 
   document.getElementById('drawer-status-select').addEventListener('change', async function() {
     const newStatus = this.value;
-    try {
-      await apiPost('updateLead', { payload: { ...lead, status: newStatus } });
-      showToast('Status updated!');
-      await loadAll();
-      const updated = state.leads.find(l => l.lead_id === lead.lead_id);
-      if (updated) openLeadDrawer(updated);
-    } catch(e) {
-      showToast('Error: ' + e.message, true);
+    const isSoldStatus = newStatus === 'Sold' || newStatus === 'Sold (Delayed)';
+    const wasAlreadySold = lead.status === 'Sold' || lead.status === 'Sold (Delayed)';
+    if (isSoldStatus && !wasAlreadySold) {
+      openSoldDetailsModal(lead, newStatus);
+    } else {
+      try {
+        await apiPost('updateLead', { payload: { ...lead, status: newStatus } });
+        showToast('Status updated!');
+        await loadAll();
+        const updated = state.leads.find(l => l.lead_id === lead.lead_id);
+        if (updated) openLeadDrawer(updated);
+      } catch(e) {
+        showToast('Error: ' + e.message, true);
+      }
     }
   });
 
@@ -454,6 +491,93 @@ async function undoLeadComplete(lead) {
   }
 }
 
+function setupSoldDetailsModal() {
+  document.getElementById('sold-details-close').addEventListener('click', closeSoldDetailsModal);
+  document.getElementById('sold-details-skip').addEventListener('click', async () => {
+    const form = document.getElementById('sold-details-form');
+    const leadId = form.elements.lead_id.value;
+    const newStatus = form.elements.new_status.value;
+    const lead = state.leads.find(l => l.lead_id === leadId);
+    if (!lead) return;
+    closeSoldDetailsModal();
+    try {
+      await apiPost('updateLead', { payload: { ...lead, status: newStatus } });
+      showToast('Marked as Sold!');
+      await loadAll();
+      const updated = state.leads.find(l => l.lead_id === leadId);
+      if (updated) openLeadDrawer(updated);
+    } catch(e) { showToast('Error: ' + e.message, true); }
+  });
+  document.getElementById('sold-details-save').addEventListener('click', saveSoldDetailsForm);
+  document.getElementById('btn-add-sold-item').addEventListener('click', addSoldItemRow);
+}
+
+function openSoldDetailsModal(lead, newStatus) {
+  const form = document.getElementById('sold-details-form');
+  form.reset();
+  form.elements.lead_id.value = lead.lead_id;
+  form.elements.new_status.value = newStatus;
+  document.getElementById('sold-item-rows').innerHTML = '';
+  openModal('sold-details-overlay');
+}
+
+async function saveSoldDetailsForm() {
+  const form = document.getElementById('sold-details-form');
+  const btn = document.getElementById('sold-details-save');
+  btn.textContent = 'Saving…'; btn.disabled = true;
+  try {
+    const fd = Object.fromEntries(new FormData(form));
+    const lead = state.leads.find(l => l.lead_id === fd.lead_id);
+    if (!lead) return;
+    const payload = { ...lead, status: fd.new_status, billing_name: fd.billing_name,
+      est_start_month: fd.est_start_month, total_days_budgeted: fd.total_days_budgeted,
+      subs_needed: fd.subs_needed };
+    await apiPost('updateLead', { payload });
+    const items = collectSoldItems();
+    if (items.length) await apiPost('saveLeadItems', { leadId: fd.lead_id, items });
+    closeSoldDetailsModal();
+    showToast('Marked as Sold!');
+    await loadAll();
+    const updated = state.leads.find(l => l.lead_id === fd.lead_id);
+    if (updated) openLeadDrawer(updated);
+  } catch(e) {
+    showToast('Error: ' + e.message, true);
+  } finally {
+    btn.textContent = 'Save & Mark Sold'; btn.disabled = false;
+  }
+}
+
+function addSoldItemRow(prefill = {}) {
+  const container = document.getElementById('sold-item-rows');
+  const row = document.createElement('div');
+  row.className = 'item-selector-row';
+  const options = state.spiffRates.map(r =>
+    `<option value="${esc(r.item_name)}" data-price="${r.sale_price}" data-spiff="${r.spiff_amount}"
+      ${prefill.item_name === r.item_name ? 'selected' : ''}>${esc(r.item_name)}</option>`
+  ).join('');
+  row.innerHTML = `
+    <select data-field="item_name"><option value="">Select item…</option>${options}</select>
+    <input type="number" data-field="quantity" value="${prefill.quantity||1}" min="1" style="width:60px">
+    <span data-field="price" style="text-align:right;padding:0 4px">—</span>
+    <span data-field="spiff" style="text-align:right;padding:0 4px">—</span>
+    <button type="button" class="btn-remove" title="Remove">✕</button>
+  `;
+  row.querySelector('[data-field=item_name]').addEventListener('change', () => updateItemRow(row));
+  row.querySelector('.btn-remove').addEventListener('click', () => row.remove());
+  container.appendChild(row);
+}
+
+function collectSoldItems() {
+  return Array.from(document.querySelectorAll('#sold-item-rows .item-selector-row')).map(row => ({
+    item_name: row.querySelector('[data-field=item_name]').value,
+    quantity:  row.querySelector('[data-field=quantity]').value,
+  })).filter(i => i.item_name);
+}
+
+function closeSoldDetailsModal() {
+  document.getElementById('sold-details-overlay').classList.remove('open');
+}
+
 function setupFollowUpModal() {
   document.getElementById('followup-modal-close').addEventListener('click', closeFollowUpModal);
   document.getElementById('followup-modal-cancel').addEventListener('click', closeFollowUpModal);
@@ -464,7 +588,10 @@ function openFollowUpModal(lead) {
   const form = document.getElementById('followup-form');
   form.reset();
   form.elements.lead_id.value = lead.lead_id;
-  form.elements.followup_date.value = new Date().toISOString().split('T')[0];
+  const todayDate = new Date();
+  form.elements.followup_date.value = todayDate.toISOString().split('T')[0];
+  const nextDate = new Date(todayDate); nextDate.setDate(nextDate.getDate() + 7);
+  form.elements.next_followup_date.value = nextDate.toISOString().split('T')[0];
   state.selectedLead = lead;
   openModal('followup-modal-overlay');
 }
@@ -1090,6 +1217,42 @@ function fmtMonth(m) {
 
 function esc(str) {
   return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function statusSelectClass(status) {
+  const map = {
+    'Bid Submitted': 's-bid', 'Waiting Approval': 's-approval',
+    'Waiting Load Calc': 's-loadcalc', 'Sold': 's-sold',
+    'Sold (Delayed)': 's-delayed', 'Lost': 's-lost',
+  };
+  return map[status] || 's-bid';
+}
+
+async function quickStatusChange(sel) {
+  const newStatus = sel.value;
+  const lead = state.leads.find(l => l.lead_id === sel.dataset.id);
+  if (!lead) return;
+  const isSoldStatus = newStatus === 'Sold' || newStatus === 'Sold (Delayed)';
+  const wasAlreadySold = lead.status === 'Sold' || lead.status === 'Sold (Delayed)';
+  // Update select color immediately
+  sel.className = 'status-select ' + statusSelectClass(newStatus);
+  if (isSoldStatus && !wasAlreadySold) {
+    openSoldDetailsModal(lead, newStatus);
+  } else {
+    try {
+      await apiPost('updateLead', { payload: { ...lead, status: newStatus } });
+      showToast('Status updated!');
+      await loadAll();
+      if (state.selectedLead && state.selectedLead.lead_id === lead.lead_id) {
+        const updated = state.leads.find(l => l.lead_id === lead.lead_id);
+        if (updated) openLeadDrawer(updated);
+      }
+    } catch(e) {
+      showToast('Error: ' + e.message, true);
+      sel.value = lead.status;
+      sel.className = 'status-select ' + statusSelectClass(lead.status);
+    }
+  }
 }
 
 function statusBadge(status) {

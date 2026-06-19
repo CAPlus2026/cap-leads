@@ -80,9 +80,13 @@ function updateLead(ss, payload) {
   const headers = getHeaders(sheet);
   const rowNum = findRowById(sheet, 0, payload.lead_id);
   if (!rowNum) return { error: 'Lead not found: ' + payload.lead_id };
+  // Read existing row so we never wipe columns not included in the payload
+  const existing = sheet.getRange(rowNum, 1, 1, headers.length).getValues()[0];
+  const existingObj = {};
+  headers.forEach((h, i) => { existingObj[h] = existing[i]; });
   payload.last_updated = new Date().toISOString();
-  sheet.getRange(rowNum, 1, 1, headers.length)
-    .setValues([headers.map(h => payload[h] !== undefined ? payload[h] : '')]);
+  const merged = headers.map(h => payload[h] !== undefined ? payload[h] : existingObj[h]);
+  sheet.getRange(rowNum, 1, 1, headers.length).setValues([merged]);
   if (payload.status === 'Sold' || payload.status === 'Sold (Delayed)') {
     syncCommission(ss, payload);
   }
@@ -251,6 +255,16 @@ function logFollowUp(ss, payload) {
   payload.log_id = generateId('FU');
   payload.logged_at = new Date().toISOString();
   sheet.appendRow(headers.map(h => payload[h] !== undefined ? payload[h] : ''));
+  // Update next_followup_date on the lead record so overdue detection works
+  if (payload.lead_id && payload.next_followup_date) {
+    const leadSheet = ss.getSheetByName('Leads');
+    if (leadSheet) {
+      const lHeaders = getHeaders(leadSheet);
+      const lRow = findRowById(leadSheet, 0, payload.lead_id);
+      const nfi = lHeaders.indexOf('next_followup_date');
+      if (lRow && nfi >= 0) leadSheet.getRange(lRow, nfi + 1).setValue(payload.next_followup_date);
+    }
+  }
   return { success: true, log_id: payload.log_id };
 }
 
@@ -291,6 +305,26 @@ function setDropdown(sheet, rangeA1, values) {
   );
 }
 
+// ─── ADD COLUMNS TO LEADS (run once) ──────────────────────────────────────────
+
+function step8_AddColumns() {
+  const ss = SpreadsheetApp.openById(SS_ID);
+  const sheet = ss.getSheetByName('Leads');
+  const headers = getHeaders(sheet);
+  const toAdd = ['next_followup_date'];
+  toAdd.forEach(col => {
+    if (headers.indexOf(col) === -1) {
+      const nextCol = headers.length + 1;
+      sheet.getRange(1, nextCol).setValue(col)
+        .setBackground('#185FA5').setFontColor('#FFFFFF').setFontWeight('bold');
+      Logger.log('Added column: ' + col);
+    } else {
+      Logger.log('Column already exists: ' + col);
+    }
+  });
+  Logger.log('step8_AddColumns complete.');
+}
+
 // ─── FOLLOW-UP LOG TAB SETUP (run once) ───────────────────────────────────────
 
 function step7_FollowUpLog() {
@@ -303,7 +337,7 @@ function step7_FollowUpLog() {
   ]]);
   sheet.getRange(1, 1, 1, 6).setBackground('#185FA5').setFontColor('#FFFFFF').setFontWeight('bold');
   sheet.setFrozenRows(1);
-  SpreadsheetApp.getUi().alert('✅ Follow-Up Log tab created!');
+  Logger.log('Follow-Up Log tab created successfully.');
 }
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────

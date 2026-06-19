@@ -181,12 +181,8 @@
             <label>Job Name <span class="req">*</span></label>
             <input type="text" name="job_name" required>
           </div>
-          <div class="form-group">
-            <label>Assigned To <span class="req">*</span></label>
-            <select name="assigned_to" required>
-              <option value="">Select…</option>
-              <option>Derrick</option>
-            </select>
+          <div class="form-group" style="display:none">
+            <input type="hidden" name="assigned_to" value="Derrick">
           </div>
         </div>
 
@@ -446,6 +442,58 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" id="log-modal-cancel">Cancel</button>
       <button class="btn btn-primary" id="log-modal-save">Log Contact</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── SOLD DETAILS MODAL ── -->
+<div class="modal-overlay" id="sold-details-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>🎉 Mark as Sold — Enter Job Details</h2>
+      <button class="drawer-close" id="sold-details-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="sold-details-form" autocomplete="off">
+        <input type="hidden" name="lead_id">
+        <input type="hidden" name="new_status">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Customer / Billing Name</label>
+            <input type="text" name="billing_name">
+          </div>
+          <div class="form-group">
+            <label>Est. Start Month</label>
+            <input type="month" name="est_start_month">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Total Days Budgeted</label>
+            <input type="number" name="total_days_budgeted" min="0">
+          </div>
+          <div class="form-group">
+            <label>Subs Needed?</label>
+            <select name="subs_needed">
+              <option value="">Select…</option>
+              <option>Yes</option>
+              <option>No</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-divider">Accessories &amp; Memberships Sold</div>
+        <div class="item-selector">
+          <div class="item-selector-row header">
+            <span>Item</span><span>Qty</span><span>Price</span><span>Spiff</span><span></span>
+          </div>
+          <div id="sold-item-rows"></div>
+          <button type="button" class="btn-add-item" id="btn-add-sold-item">+ Add Item</button>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="sold-details-skip">Skip for Now</button>
+      <button class="btn btn-green" id="sold-details-save">Save &amp; Mark Sold</button>
     </div>
   </div>
 </div>

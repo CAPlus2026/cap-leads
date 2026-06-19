@@ -531,6 +531,37 @@ tfoot td { padding: 10px 14px; font-size: 13px; border-top: 2px solid var(--gree
 .toast.show { opacity: 1; transform: translateY(0); }
 .toast.error { background: #dc2626; }
 
+/* ── STATUS SELECT IN TABLE ──────────────────────────────────────────── */
+.status-select {
+  border: none;
+  border-radius: 12px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b7280'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  padding-right: 20px;
+}
+.status-select.s-bid      { background-color:#dbeafe; color:#1e40af; }
+.status-select.s-approval { background-color:#ede9fe; color:#5b21b6; }
+.status-select.s-loadcalc { background-color:#fef3c7; color:#92400e; }
+.status-select.s-sold     { background-color:var(--green-lt); color:var(--green); }
+.status-select.s-delayed  { background-color:var(--amber-lt); color:var(--amber); }
+.status-select.s-lost     { background-color:var(--gray-lt); color:var(--gray); }
+.status-select.s-complete { background-color:var(--gray-lt); color:var(--gray); }
+
+/* ── OVERDUE FOLLOW-UP ROW ───────────────────────────────────────────── */
+tbody tr.row-followup-due { background: #fffbeb !important; border-left: 3px solid var(--amber) !important; }
+tbody tr.row-followup-due:hover { background: #fef3c7 !important; }
+
+/* ── LEAD AGE ────────────────────────────────────────────────────────── */
+.lead-age { font-size: 10px; color: var(--gray); margin-top: 1px; }
+.lead-age.stale { color: var(--amber); font-weight: 600; }
+
 /* ── SORTABLE COLUMNS ────────────────────────────────────────────────── */
 thead th.sortable { cursor: pointer; user-select: none; }
 thead th.sortable:hover { background: #eef2f7; color: var(--blue); }
