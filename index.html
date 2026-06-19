@@ -35,6 +35,7 @@
         <button class="chip active" data-status="all">All</button>
         <button class="chip" data-status="active">Active</button>
         <button class="chip" data-status="sold">Sold</button>
+        <button class="chip" data-status="complete">Completed</button>
         <button class="chip" data-status="lost">Lost</button>
       </div>
       <select class="filter-select" id="type-filter">
@@ -43,6 +44,7 @@
         <option value="Remodel">Remodel</option>
         <option value="Changeout">Changeout</option>
       </select>
+      <input type="text" class="search-input" id="lead-search" placeholder="Search jobs…">
       <select class="filter-select" id="assignee-filter">
         <option value="all">All Salespeople</option>
         <option value="Derrick">Derrick</option>
@@ -52,12 +54,12 @@
       <table id="leads-table">
         <thead>
           <tr>
-            <th>Project</th>
+            <th class="sortable" data-col="job_name">Project</th>
             <th>Type</th>
-            <th>Status</th>
-            <th>Amount</th>
+            <th class="sortable" data-col="status">Status</th>
+            <th class="sortable" data-col="sale_amount">Amount</th>
             <th>Assigned</th>
-            <th>Est. Start</th>
+            <th class="sortable" data-col="est_start_month">Est. Start</th>
             <th>Days Budgeted</th>
             <th>Subs</th>
             <th>Billing Progress</th>
@@ -444,6 +446,39 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" id="log-modal-cancel">Cancel</button>
       <button class="btn btn-primary" id="log-modal-save">Log Contact</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── FOLLOW-UP LOG MODAL ── -->
+<div class="modal-overlay" id="followup-modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Log Follow-Up</h2>
+      <button class="drawer-close" id="followup-modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="followup-form" autocomplete="off">
+        <input type="hidden" name="lead_id">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Follow-Up Date <span class="req">*</span></label>
+            <input type="date" name="followup_date" required>
+          </div>
+          <div class="form-group">
+            <label>Next Follow-Up</label>
+            <input type="date" name="next_followup_date">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea name="notes" placeholder="What was discussed, any updates…"></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="followup-modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="followup-modal-save">Log Follow-Up</button>
     </div>
   </div>
 </div>

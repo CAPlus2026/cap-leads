@@ -21,7 +21,8 @@ function doGet(e) {
       case 'getSpiffRates':  result = getSpiffRates(ss); break;
       case 'getCommission':  result = getCommission(ss); break;
       case 'getBuilders':    result = getBuilders(ss); break;
-      case 'getBuilderLogs': result = getBuilderLogs(ss, e.parameter.builderId); break;
+      case 'getBuilderLogs':   result = getBuilderLogs(ss, e.parameter.builderId); break;
+      case 'getFollowUpLogs': result = getFollowUpLogs(ss, e.parameter.leadId); break;
       default: result = { error: 'Unknown action: ' + action };
     }
   } catch (err) {
@@ -44,6 +45,7 @@ function doPost(e) {
       case 'createBuilder': result = createBuilder(ss, data.payload); break;
       case 'updateBuilder': result = updateBuilder(ss, data.payload); break;
       case 'logContact':    result = logContact(ss, data.payload); break;
+      case 'logFollowUp':   result = logFollowUp(ss, data.payload); break;
       default: result = { error: 'Unknown action: ' + data.action };
     }
   } catch (err) {
@@ -138,10 +140,24 @@ function syncCommission(ss, lead) {
   if (!rowNum) { addToCommission(ss, lead); return; }
   const ji = headers.indexOf('job_name');
   const si = headers.indexOf('sale_amount');
-  const ci = headers.indexOf('job_complete_date');
+  const ci  = headers.indexOf('job_complete_date');
+  const ppi = headers.indexOf('pay_period');
   if (ji >= 0) sheet.getRange(rowNum, ji + 1).setValue(lead.job_name);
   if (si >= 0) sheet.getRange(rowNum, si + 1).setValue(lead.sale_amount);
-  if (ci >= 0 && lead.job_complete_date) sheet.getRange(rowNum, ci + 1).setValue(lead.job_complete_date);
+  if (ci >= 0 && lead.job_complete_date) {
+    sheet.getRange(rowNum, ci + 1).setValue(lead.job_complete_date);
+    // Auto-set pay_period to YYYY-MM of the completion date
+    if (ppi >= 0) {
+      const d = new Date(lead.job_complete_date);
+      const payPeriod = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      sheet.getRange(rowNum, ppi + 1).setValue(payPeriod);
+    }
+  }
+  // If completion date is cleared, clear pay_period too
+  if (ci >= 0 && lead.job_complete_date === '') {
+    sheet.getRange(rowNum, ci + 1).setValue('');
+    if (ppi >= 0) sheet.getRange(rowNum, ppi + 1).setValue('');
+  }
 }
 
 function updateCommission(ss, payload) {
@@ -219,6 +235,25 @@ function logContact(ss, payload) {
   return { success: true, log_id: payload.log_id };
 }
 
+// ─── FOLLOW-UP LOGS ───────────────────────────────────────────────────────────
+
+function getFollowUpLogs(ss, leadId) {
+  const sheet = ss.getSheetByName('Follow-Up Log');
+  if (!sheet) return [];
+  const all = sheetToObjects(sheet);
+  return leadId ? all.filter(r => r.lead_id === leadId) : all;
+}
+
+function logFollowUp(ss, payload) {
+  const sheet = ss.getSheetByName('Follow-Up Log');
+  if (!sheet) return { error: 'Follow-Up Log tab not found — run step7_FollowUpLog first' };
+  const headers = getHeaders(sheet);
+  payload.log_id = generateId('FU');
+  payload.logged_at = new Date().toISOString();
+  sheet.appendRow(headers.map(h => payload[h] !== undefined ? payload[h] : ''));
+  return { success: true, log_id: payload.log_id };
+}
+
 // ─── BUILDERS TAB SETUP (run once) ────────────────────────────────────────────
 
 function step6_Builders() {
@@ -254,6 +289,21 @@ function setDropdown(sheet, rangeA1, values) {
   sheet.getRange(rangeA1).setDataValidation(
     SpreadsheetApp.newDataValidation().requireValueInList(values, true).setAllowInvalid(false).build()
   );
+}
+
+// ─── FOLLOW-UP LOG TAB SETUP (run once) ───────────────────────────────────────
+
+function step7_FollowUpLog() {
+  const ss = SpreadsheetApp.openById(SS_ID);
+  let sheet = ss.getSheetByName('Follow-Up Log');
+  if (!sheet) sheet = ss.insertSheet('Follow-Up Log');
+  else sheet.clear();
+  sheet.getRange(1, 1, 1, 6).setValues([[
+    'log_id', 'lead_id', 'followup_date', 'next_followup_date', 'notes', 'logged_at'
+  ]]);
+  sheet.getRange(1, 1, 1, 6).setBackground('#185FA5').setFontColor('#FFFFFF').setFontWeight('bold');
+  sheet.setFrozenRows(1);
+  SpreadsheetApp.getUi().alert('✅ Follow-Up Log tab created!');
 }
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────

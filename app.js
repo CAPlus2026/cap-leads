@@ -17,6 +17,8 @@ const state = {
   editingLeadId: null,
   editingBuilderId: null,
   filters: { status: 'all', type: 'all', assignee: 'all' },
+  search: '',
+  sort: { col: null, dir: 'asc' },
   commFilters: { period: 'all', status: 'all' },
   builderFilter: 'all',
 };
@@ -51,6 +53,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupLeadModal();
   setupBuilderModal();
   setupLogModal();
+  setupFollowUpModal();
   setupDrawerClose();
 
   if (SCRIPT_URL.startsWith('PASTE')) {
@@ -131,21 +134,59 @@ function renderLeadsTab() {
     state.filters.assignee = e.target.value;
     renderLeadsTable();
   });
+
+  document.getElementById('lead-search').addEventListener('input', e => {
+    state.search = e.target.value.toLowerCase();
+    renderLeadsTable();
+  });
+
+  document.querySelectorAll('#leads-table thead th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (state.sort.col === col) {
+        state.sort.dir = state.sort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.sort.col = col;
+        state.sort.dir = 'asc';
+      }
+      document.querySelectorAll('#leads-table thead th').forEach(h => h.classList.remove('sort-asc','sort-desc'));
+      th.classList.add(state.sort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+      renderLeadsTable();
+    });
+  });
 }
 
 function filteredLeads() {
-  return state.leads.filter(l => {
+  let leads = state.leads.filter(l => {
     const s = l.status || '';
     const isSold = s === 'Sold' || s === 'Sold (Delayed)';
+    const isComplete = !!(l.job_complete_date && l.job_complete_date !== '');
     const isActive = !isSold && s !== 'Lost';
 
-    if (state.filters.status === 'active' && !isActive) return false;
-    if (state.filters.status === 'sold'   && !isSold)   return false;
-    if (state.filters.status === 'lost'   && s !== 'Lost') return false;
+    if (state.filters.status === 'active'   && !isActive)   return false;
+    if (state.filters.status === 'sold'     && !(isSold && !isComplete)) return false;
+    if (state.filters.status === 'complete' && !isComplete)  return false;
+    if (state.filters.status === 'lost'     && s !== 'Lost') return false;
     if (state.filters.type !== 'all' && l.project_type !== state.filters.type) return false;
     if (state.filters.assignee !== 'all' && l.assigned_to !== state.filters.assignee) return false;
+    if (state.search) {
+      const q = state.search;
+      if (!(l.job_name||'').toLowerCase().includes(q) && !(l.address||'').toLowerCase().includes(q)) return false;
+    }
     return true;
   });
+
+  if (state.sort.col) {
+    const col = state.sort.col;
+    const dir = state.sort.dir === 'asc' ? 1 : -1;
+    leads = leads.slice().sort((a, b) => {
+      let av = a[col] || '', bv = b[col] || '';
+      if (col === 'sale_amount') { av = parseFloat(av)||0; bv = parseFloat(bv)||0; }
+      return av < bv ? -dir : av > bv ? dir : 0;
+    });
+  }
+
+  return leads;
 }
 
 function renderSummaryBar() {
@@ -177,10 +218,11 @@ function renderLeadsTable() {
   }
 
   tbody.innerHTML = leads.map(l => {
-    const isSold    = l.status === 'Sold' || l.status === 'Sold (Delayed)';
-    const isDelayed = l.status === 'Sold (Delayed)';
-    const isLost    = l.status === 'Lost';
-    const rowClass  = isSold && !isDelayed ? 'row-sold' : (isDelayed ? 'row-delayed' : (isLost ? 'row-lost' : ''));
+    const isSold     = l.status === 'Sold' || l.status === 'Sold (Delayed)';
+    const isDelayed  = l.status === 'Sold (Delayed)';
+    const isLost     = l.status === 'Lost';
+    const isComplete = !!(l.job_complete_date && l.job_complete_date !== '');
+    const rowClass   = isComplete ? 'row-complete' : (isSold && !isDelayed ? 'row-sold' : (isDelayed ? 'row-delayed' : (isLost ? 'row-lost' : '')));
 
     const roughAmt  = l.billing_rough_date ? (parseFloat(l.billing_rough_amount) || 0) : 0;
     const trimAmt   = l.billing_trim_date  ? (parseFloat(l.billing_trim_amount)  || 0) : 0;
@@ -312,13 +354,45 @@ async function openLeadDrawer(lead) {
   document.getElementById('drawer-footer').innerHTML = `
     <button class="btn btn-secondary btn-sm" id="btn-edit-lead">Edit Lead</button>
     ${isSold ? (isComplete
-      ? `<span class="badge badge-sold" style="padding:7px 14px;font-size:12px">✓ Completed ${fmtDate(lead.job_complete_date)}</span>`
+      ? `<span class="badge badge-sold" style="padding:7px 14px;font-size:12px">✓ Completed ${fmtDate(lead.job_complete_date)}</span>
+         <button class="btn btn-sm" style="background:#f3f4f6;color:var(--gray);border:1px solid var(--border)" id="btn-undo-complete">Undo</button>`
       : `<button class="btn btn-green btn-sm" id="btn-mark-complete">Mark Complete</button>`
-    ) : ''}
+    ) : `<button class="btn btn-primary btn-sm" id="btn-log-followup">Log Follow-Up</button>`}
   `;
   document.getElementById('btn-edit-lead').addEventListener('click', () => openEditLeadModal(lead));
-  if (isSold && !isComplete) {
+  if (isSold && isComplete) {
+    document.getElementById('btn-undo-complete').addEventListener('click', () => undoLeadComplete(lead));
+  } else if (isSold) {
     document.getElementById('btn-mark-complete').addEventListener('click', () => markLeadComplete(lead));
+  } else {
+    document.getElementById('btn-log-followup').addEventListener('click', () => openFollowUpModal(lead));
+  }
+
+  // Follow-up history for non-sold leads
+  if (!isSold) {
+    apiGet('getFollowUpLogs', { leadId: lead.lead_id }).then(logs => {
+      logs = logs || [];
+      const section = document.createElement('div');
+      section.className = 'drawer-section';
+      section.innerHTML = `
+        <h3>Follow-Up History (${logs.length})</h3>
+        ${logs.length ? logs.slice().reverse().map(l => `
+          <div class="followup-entry">
+            <div class="followup-date">${fmtDate(l.followup_date)}${l.next_followup_date ? ' · Next: ' + fmtDate(l.next_followup_date) : ''}</div>
+            ${l.notes ? `<div class="followup-notes">${esc(l.notes)}</div>` : ''}
+          </div>`).join('')
+        : '<div style="color:var(--gray);font-size:12px;padding:8px 0">No follow-ups logged yet.</div>'}
+      `;
+      document.getElementById('drawer-body').appendChild(section);
+    }).catch(() => {});
+  }
+
+  // Last updated
+  if (lead.last_updated) {
+    const lu = document.createElement('div');
+    lu.style = 'font-size:11px;color:var(--gray);text-align:right;padding:4px 0 8px';
+    lu.textContent = 'Last updated: ' + fmtDate(lead.last_updated);
+    document.getElementById('drawer-body').appendChild(lu);
   }
 
   document.getElementById('drawer-status-select').addEventListener('change', async function() {
@@ -365,6 +439,57 @@ async function markLeadComplete(lead) {
   } catch(e) {
     showToast('Error: ' + e.message, true);
   }
+}
+
+async function undoLeadComplete(lead) {
+  if (!confirm(`Remove the completion date from "${lead.job_name}"?`)) return;
+  try {
+    await apiPost('updateLead', { payload: { ...lead, job_complete_date: '' } });
+    showToast('Completion undone.');
+    await loadAll();
+    const updated = state.leads.find(l => l.lead_id === lead.lead_id);
+    if (updated) openLeadDrawer(updated);
+  } catch(e) {
+    showToast('Error: ' + e.message, true);
+  }
+}
+
+function setupFollowUpModal() {
+  document.getElementById('followup-modal-close').addEventListener('click', closeFollowUpModal);
+  document.getElementById('followup-modal-cancel').addEventListener('click', closeFollowUpModal);
+  document.getElementById('followup-modal-save').addEventListener('click', saveFollowUpForm);
+}
+
+function openFollowUpModal(lead) {
+  const form = document.getElementById('followup-form');
+  form.reset();
+  form.elements.lead_id.value = lead.lead_id;
+  form.elements.followup_date.value = new Date().toISOString().split('T')[0];
+  state.selectedLead = lead;
+  openModal('followup-modal-overlay');
+}
+
+async function saveFollowUpForm() {
+  const form = document.getElementById('followup-form');
+  if (!form.checkValidity()) { form.reportValidity(); return; }
+  const btn = document.getElementById('followup-modal-save');
+  btn.textContent = 'Saving…'; btn.disabled = true;
+  try {
+    const payload = Object.fromEntries(new FormData(form));
+    await apiPost('logFollowUp', { payload });
+    closeFollowUpModal();
+    showToast('Follow-up logged!');
+    const updated = state.leads.find(l => l.lead_id === payload.lead_id);
+    if (updated) openLeadDrawer(updated);
+  } catch(e) {
+    showToast('Error: ' + e.message, true);
+  } finally {
+    btn.textContent = 'Log Follow-Up'; btn.disabled = false;
+  }
+}
+
+function closeFollowUpModal() {
+  document.getElementById('followup-modal-overlay').classList.remove('open');
 }
 
 function milestoneCheck(field, label, val, date, leadId) {
