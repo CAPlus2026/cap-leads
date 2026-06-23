@@ -677,6 +677,7 @@ function setupLeadModal() {
     const phase = e.target.value === 'Remodel' || e.target.value === 'New Construction';
     document.getElementById('phase-fields').classList.toggle('hidden', !phase);
     const isService = e.target.value === 'Service & Add-Ons';
+    document.getElementById('lead-milestones-section').classList.toggle('hidden', isService);
     document.getElementById('lead-progress-billing-toggle-row').classList.toggle('hidden', isService);
     if (isService) {
       document.getElementById('form-progress-billing').checked = false;
@@ -725,6 +726,7 @@ async function openEditLeadModal(lead) {
   document.getElementById('phase-fields').classList.toggle('hidden', !phase);
 
   const isService = lead.project_type === 'Service & Add-Ons';
+  document.getElementById('lead-milestones-section').classList.toggle('hidden', isService);
   document.getElementById('lead-progress-billing-toggle-row').classList.toggle('hidden', isService);
   const hasBilling = !!(parseFloat(lead.billing_rough_amount) || parseFloat(lead.billing_trim_amount) || parseFloat(lead.billing_other_amount));
   document.getElementById('form-progress-billing').checked = !isService && hasBilling;
