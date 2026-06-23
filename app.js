@@ -3,6 +3,7 @@
  * Paste your deployed Apps Script URL into SCRIPT_URL below.
  */
 
+// v2.1
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbydEDsyeykVDuoKLlTX-anPqsKqmXaiTd--h7SJLO4rUjkKe9YppYkhCHa4TybeKLdw/exec';
 
