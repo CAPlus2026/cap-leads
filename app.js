@@ -1104,11 +1104,8 @@ function exportPayroll() {
     if (!seenParents.has(c.lead_id)) {
       seenParents.add(c.lead_id);
       html += `<tr style="background:#f8fafc">
-        <td><strong>${esc(c.job_name)}</strong> <span style="font-size:11px;color:#6b7280">(Progress Billing)</span></td>
-        <td>${fmt$(c.sale_amount)}</td><td>${fmt$(c.net_sale)}</td>
-        <td>${fmt$(c.base_commission)}</td><td>${fmt$(c.total_spiffs)}</td>
-        <td style="font-weight:600">${fmt$(c.total_payout)}</td>
-        <td>${fmtDate(c.job_complete_date)||'In Progress'}</td><td>—</td>
+        <td colspan="5"><strong>${esc(c.job_name)}</strong> <span style="font-size:11px;color:#6b7280">Progress Billing · Sale ${fmt$(c.sale_amount)} · ${fmtDate(c.job_complete_date)||'In Progress'}</span></td>
+        <td colspan="3" style="color:#6b7280;font-size:11px">Paid by stage below</td>
       </tr>`;
     }
     html += `<tr style="background:#f1f5f9;font-size:12px">
