@@ -169,7 +169,7 @@ function updateCommission(ss, payload) {
   const headers = getHeaders(sheet);
   const rowNum = findRowById(sheet, 0, payload.lead_id);
   if (!rowNum) return { error: 'Commission row not found' };
-  ['job_complete_date', 'paid_date', 'notes'].forEach(field => {
+  ['job_complete_date','paid_date','notes','rough_paid_date','trim_paid_date','other_paid_date'].forEach(field => {
     const ci = headers.indexOf(field);
     if (ci >= 0 && payload[field] !== undefined) {
       sheet.getRange(rowNum, ci + 1).setValue(payload[field]);
@@ -303,6 +303,41 @@ function setDropdown(sheet, rangeA1, values) {
   sheet.getRange(rangeA1).setDataValidation(
     SpreadsheetApp.newDataValidation().requireValueInList(values, true).setAllowInvalid(false).build()
   );
+}
+
+// ─── ADD COMMISSION STAGE FIELDS (run once) ───────────────────────────────────
+
+function step9_AddCommissionFields() {
+  const ss = SpreadsheetApp.openById(SS_ID);
+  const sheet = ss.getSheetByName('Commission');
+  const headers = getHeaders(sheet);
+  const toAdd = ['rough_paid_date', 'trim_paid_date', 'other_paid_date'];
+  toAdd.forEach(col => {
+    if (headers.indexOf(col) === -1) {
+      const nextCol = headers.length + 1;
+      sheet.getRange(1, nextCol).setValue(col)
+        .setBackground('#185FA5').setFontColor('#FFFFFF').setFontWeight('bold');
+      Logger.log('Added column: ' + col);
+    }
+  });
+  Logger.log('step9_AddCommissionFields complete.');
+}
+
+// ─── ADD BUILDER TO LEADS (run once) ──────────────────────────────────────────
+
+function step10_AddBuilderToLeads() {
+  const ss = SpreadsheetApp.openById(SS_ID);
+  const sheet = ss.getSheetByName('Leads');
+  const headers = getHeaders(sheet);
+  if (headers.indexOf('builder_id') === -1) {
+    const nextCol = headers.length + 1;
+    sheet.getRange(1, nextCol).setValue('builder_id')
+      .setBackground('#185FA5').setFontColor('#FFFFFF').setFontWeight('bold');
+    Logger.log('Added builder_id column to Leads.');
+  } else {
+    Logger.log('builder_id already exists.');
+  }
+  Logger.log('step10_AddBuilderToLeads complete.');
 }
 
 // ─── ADD COLUMNS TO LEADS (run once) ──────────────────────────────────────────

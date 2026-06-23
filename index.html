@@ -43,6 +43,7 @@
         <option value="New Construction">New Construction</option>
         <option value="Remodel">Remodel</option>
         <option value="Changeout">Changeout</option>
+        <option value="Service & Add-Ons">Service &amp; Add-Ons</option>
       </select>
       <input type="text" class="search-input" id="lead-search" placeholder="Search jobs…">
       <select class="filter-select" id="assignee-filter">
@@ -184,6 +185,12 @@
           <div class="form-group" style="display:none">
             <input type="hidden" name="assigned_to" value="Derrick">
           </div>
+          <div class="form-group">
+            <label>Builder / Contractor</label>
+            <select name="builder_id" id="form-builder-select">
+              <option value="">None / Direct</option>
+            </select>
+          </div>
         </div>
 
         <div class="form-group">
@@ -199,6 +206,7 @@
               <option>Changeout</option>
               <option>Remodel</option>
               <option>New Construction</option>
+              <option>Service &amp; Add-Ons</option>
             </select>
           </div>
           <div class="form-group">

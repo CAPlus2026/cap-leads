@@ -668,6 +668,7 @@ function openNewLeadModal() {
   document.getElementById('sold-fields').classList.add('hidden');
   document.getElementById('phase-fields').classList.add('hidden');
   document.getElementById('item-rows').innerHTML = '';
+  populateBuilderDropdown(null);
   updateCommissionPreview();
   openModal('lead-modal-overlay');
 }
@@ -700,6 +701,7 @@ async function openEditLeadModal(lead) {
     } catch(e) {}
   }
 
+  populateBuilderDropdown(lead.builder_id || '');
   updateCommissionPreview();
   openModal('lead-modal-overlay');
 }
@@ -753,6 +755,15 @@ async function saveLeadForm() {
   }
 }
 
+function populateBuilderDropdown(selectedId) {
+  const sel = document.getElementById('form-builder-select');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">None / Direct</option>' +
+    state.builders.map(b =>
+      `<option value="${esc(b.builder_id)}" ${b.builder_id === selectedId ? 'selected' : ''}>${esc(b.company_name)}</option>`
+    ).join('');
+}
+
 function collectFormData(form) {
   const data = {};
   new FormData(form).forEach((v, k) => { data[k] = v; });
@@ -760,6 +771,9 @@ function collectFormData(form) {
   ['permit_pulled','inspection_scheduled','equipment_ordered'].forEach(name => {
     data[name] = form.elements[name]?.checked ? 'TRUE' : 'FALSE';
   });
+  // Builder dropdown (not captured by FormData since it may be a plain select outside a named input)
+  const builderSel = document.getElementById('form-builder-select');
+  if (builderSel) data.builder_id = builderSel.value;
   return data;
 }
 
@@ -859,10 +873,48 @@ function filteredCommission() {
   });
 }
 
+// Returns flat list of display rows — one per commission record, with progress-billing
+// records expanded to show a parent summary + one sub-row per billing stage.
+function expandCommissionRows(commRows) {
+  const out = [];
+  commRows.forEach(c => {
+    const lead = state.leads.find(l => l.lead_id === c.lead_id) || {};
+    const isProgress = !!(lead.billing_rough_amount || lead.billing_trim_amount || lead.billing_other_amount);
+
+    if (!isProgress) {
+      out.push({ type: 'flat', c, lead });
+      return;
+    }
+
+    // Parent summary row
+    out.push({ type: 'parent', c, lead });
+
+    // Build stages
+    const totalSale = parseFloat(c.sale_amount) || 1;
+    const baseComm  = parseFloat(c.base_commission) || 0;
+    const spiffs    = parseFloat(c.total_spiffs) || 0;
+    const stages = [
+      { key: 'rough', label: 'Rough-in', amt: parseFloat(lead.billing_rough_amount)||0, date: lead.billing_rough_date, paidField: 'rough_paid_date', paidDate: c.rough_paid_date, withSpiff: true },
+      { key: 'trim',  label: 'Trim',     amt: parseFloat(lead.billing_trim_amount)||0,  date: lead.billing_trim_date,  paidField: 'trim_paid_date',  paidDate: c.trim_paid_date  },
+      { key: 'other', label: 'Other',    amt: parseFloat(lead.billing_other_amount)||0, date: lead.billing_other_date, paidField: 'other_paid_date', paidDate: c.other_paid_date },
+    ].filter(s => s.amt > 0);
+
+    stages.forEach((s, i) => {
+      const stageComm  = (s.amt / totalSale) * baseComm;
+      const stageSpiff = s.withSpiff ? spiffs : 0;
+      const stagePayout = stageComm + stageSpiff;
+      const notInvoiced = !s.date;
+      out.push({ type: 'stage', c, lead, stage: s, stageComm, stageSpiff, stagePayout, notInvoiced });
+    });
+  });
+  return out;
+}
+
 function applyCommissionFilters() {
   const rows = filteredCommission();
+  const expanded = expandCommissionRows(rows);
 
-  // Summary cards
+  // Summary cards — use parent commission records only (avoid double-counting)
   const totalPayout = rows.reduce((s, c) => s + (parseFloat(c.total_payout)||0), 0);
   const baseComm    = rows.reduce((s, c) => s + (parseFloat(c.base_commission)||0), 0);
   const spiffs      = rows.reduce((s, c) => s + (parseFloat(c.total_spiffs)||0), 0);
@@ -881,30 +933,76 @@ function applyCommissionFilters() {
     return;
   }
 
-  tbody.innerHTML = rows.map(c => `
-    <tr>
-      <td><strong>${esc(c.job_name)}</strong></td>
-      <td>${fmt$(c.sale_amount)}</td>
-      <td style="color:var(--amber)">${fmt$(c.total_acc_mem_revenue)}</td>
-      <td>${fmt$(c.net_sale)}</td>
-      <td>${fmt$(c.base_commission)}</td>
-      <td>${fmt$(c.total_spiffs)}</td>
-      <td style="font-weight:600;color:var(--green)">${fmt$(c.total_payout)}</td>
+  tbody.innerHTML = expanded.map(row => {
+    const { type, c } = row;
+
+    if (type === 'flat') {
+      return `<tr>
+        <td><strong>${esc(c.job_name)}</strong></td>
+        <td>${fmt$(c.sale_amount)}</td>
+        <td style="color:var(--amber)">${fmt$(c.total_acc_mem_revenue)}</td>
+        <td>${fmt$(c.net_sale)}</td>
+        <td>${fmt$(c.base_commission)}</td>
+        <td>${fmt$(c.total_spiffs)}</td>
+        <td style="font-weight:600;color:var(--green)">${fmt$(c.total_payout)}</td>
+        <td>
+          <input type="date" value="${fmtDateInput(c.job_complete_date)}"
+            style="border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:12px"
+            onchange="updateCommissionField('${c.lead_id}','job_complete_date',this.value)">
+        </td>
+        <td>
+          <input type="date" value="${fmtDateInput(c.paid_date)}"
+            style="border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:12px"
+            onchange="updateCommissionField('${c.lead_id}','paid_date',this.value)">
+        </td>
+        <td>${c.payment_status === 'Paid'
+          ? '<span class="badge badge-paid">Paid</span>'
+          : '<span class="badge badge-pending">Pending</span>'}</td>
+      </tr>`;
+    }
+
+    if (type === 'parent') {
+      return `<tr style="background:var(--surface)">
+        <td><strong>${esc(c.job_name)}</strong> <span style="font-size:11px;color:var(--gray)">▾ Progress Billing</span></td>
+        <td>${fmt$(c.sale_amount)}</td>
+        <td style="color:var(--amber)">${fmt$(c.total_acc_mem_revenue)}</td>
+        <td>${fmt$(c.net_sale)}</td>
+        <td>${fmt$(c.base_commission)}</td>
+        <td>${fmt$(c.total_spiffs)}</td>
+        <td style="font-weight:600;color:var(--green)">${fmt$(c.total_payout)}</td>
+        <td>
+          <input type="date" value="${fmtDateInput(c.job_complete_date)}"
+            style="border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:12px"
+            onchange="updateCommissionField('${c.lead_id}','job_complete_date',this.value)">
+        </td>
+        <td colspan="2" style="color:var(--gray);font-size:11px">Set per stage below</td>
+      </tr>`;
+    }
+
+    // stage row
+    const { stage, stageComm, stageSpiff, stagePayout, notInvoiced } = row;
+    const statusBadgeHtml = stage.paidDate
+      ? '<span class="badge badge-paid">Paid</span>'
+      : (notInvoiced
+          ? '<span class="badge badge-not-invoiced">⚠ Not Invoiced</span>'
+          : '<span class="badge badge-pending">Pending</span>');
+    return `<tr class="comm-stage-row">
+      <td><span class="comm-stage-label">${esc(stage.label)}</span>${stage.withSpiff ? ' <span style="font-size:10px;color:var(--green)">+spiff</span>' : ''}</td>
+      <td>${fmt$(stage.amt)}</td>
+      <td></td>
+      <td></td>
+      <td>${fmt$(stageComm)}</td>
+      <td>${stage.withSpiff ? fmt$(stageSpiff) : '—'}</td>
+      <td style="font-weight:600;color:var(--green)">${fmt$(stagePayout)}</td>
+      <td style="color:var(--gray);font-size:11px">${stage.date ? fmtDate(stage.date) : '—'}</td>
       <td>
-        <input type="date" value="${fmtDateInput(c.job_complete_date)}"
+        <input type="date" value="${fmtDateInput(stage.paidDate)}"
           style="border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:12px"
-          onchange="updateCommissionField('${c.lead_id}','job_complete_date',this.value)">
+          onchange="updateCommissionField('${c.lead_id}','${stage.paidField}',this.value)">
       </td>
-      <td>
-        <input type="date" value="${fmtDateInput(c.paid_date)}"
-          style="border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:12px"
-          onchange="updateCommissionField('${c.lead_id}','paid_date',this.value)">
-      </td>
-      <td>${c.payment_status === 'Paid'
-        ? '<span class="badge badge-paid">Paid</span>'
-        : '<span class="badge badge-pending">Pending</span>'}</td>
-    </tr>
-  `).join('');
+      <td>${statusBadgeHtml}</td>
+    </tr>`;
+  }).join('');
 
   const totPayout = rows.reduce((s,c) => s+(parseFloat(c.total_payout)||0),0);
   document.getElementById('commission-tfoot').innerHTML = `
@@ -920,6 +1018,10 @@ async function updateCommissionField(leadId, field, value) {
     await apiPost('updateCommission', { payload: { lead_id: leadId, [field]: value } });
     const row = state.commission.find(c => c.lead_id === leadId);
     if (row) row[field] = value;
+    // Stage paid dates also update payment_status heuristic locally
+    if (field === 'paid_date' || field === 'rough_paid_date' || field === 'trim_paid_date' || field === 'other_paid_date') {
+      if (row && value) row.payment_status = 'Paid';
+    }
     showToast('Saved');
     applyCommissionFilters();
   } catch(e) {
@@ -929,12 +1031,45 @@ async function updateCommissionField(leadId, field, value) {
 
 function exportPayroll() {
   const allRows = filteredCommission();
-  // Only export jobs that have a completion date (invoiceable/payable jobs)
   const rows = allRows.filter(c => c.job_complete_date && c.job_complete_date !== '');
   if (!rows.length) { showToast('No completed jobs to export for this period', true); return; }
 
   const period = state.commFilters.period !== 'all' ? state.commFilters.period : 'All Periods';
   const totalPayout = rows.reduce((s,c) => s+(parseFloat(c.total_payout)||0),0);
+  const expanded = expandCommissionRows(rows);
+
+  const bodyRows = expanded.map(row => {
+    if (row.type === 'flat') {
+      const c = row.c;
+      return `<tr>
+        <td>${esc(c.job_name)}</td><td>${fmt$(c.sale_amount)}</td><td>${fmt$(c.net_sale)}</td>
+        <td>${fmt$(c.base_commission)}</td><td>${fmt$(c.total_spiffs)}</td>
+        <td style="font-weight:600">${fmt$(c.total_payout)}</td>
+        <td>${fmtDate(c.job_complete_date)}</td><td>${fmtDate(c.paid_date)}</td>
+      </tr>`;
+    }
+    if (row.type === 'parent') {
+      const c = row.c;
+      return `<tr style="background:#f8fafc">
+        <td><strong>${esc(c.job_name)}</strong> (Progress Billing)</td>
+        <td>${fmt$(c.sale_amount)}</td><td>${fmt$(c.net_sale)}</td>
+        <td>${fmt$(c.base_commission)}</td><td>${fmt$(c.total_spiffs)}</td>
+        <td style="font-weight:600">${fmt$(c.total_payout)}</td>
+        <td>${fmtDate(c.job_complete_date)}</td><td>—</td>
+      </tr>`;
+    }
+    // stage row
+    const { c, stage, stageComm, stageSpiff, stagePayout } = row;
+    return `<tr style="background:#f1f5f9;font-size:12px">
+      <td style="padding-left:28px">↳ ${esc(stage.label)}${stage.withSpiff ? ' +spiff' : ''}</td>
+      <td>${fmt$(stage.amt)}</td><td></td>
+      <td>${fmt$(stageComm)}</td>
+      <td>${stage.withSpiff ? fmt$(stageSpiff) : '—'}</td>
+      <td style="font-weight:600">${fmt$(stagePayout)}</td>
+      <td>${stage.date ? fmtDate(stage.date) : '⚠ Not Invoiced'}</td>
+      <td>${fmtDate(stage.paidDate)}</td>
+    </tr>`;
+  }).join('');
 
   const win = window.open('', '_blank');
   win.document.write(`<!DOCTYPE html><html><head><title>CAP Payroll – ${period}</title>
@@ -948,13 +1083,8 @@ function exportPayroll() {
   <h1>CAP Commercial – Commission Payroll</h1>
   <h2>Period: ${period} · Generated: ${new Date().toLocaleDateString()}</h2>
   <button onclick="window.print()" style="background:#185FA5;color:white;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;margin-bottom:16px">🖨 Print / Save PDF</button>
-  <table><thead><tr><th>Project</th><th>Sale Amt</th><th>Net Sale</th><th>Base (2%)</th><th>Spiffs</th><th>Total Payout</th><th>Complete</th><th>Paid On</th></tr></thead>
-  <tbody>${rows.map(c=>`<tr>
-    <td>${esc(c.job_name)}</td><td>${fmt$(c.sale_amount)}</td><td>${fmt$(c.net_sale)}</td>
-    <td>${fmt$(c.base_commission)}</td><td>${fmt$(c.total_spiffs)}</td>
-    <td style="font-weight:600">${fmt$(c.total_payout)}</td>
-    <td>${fmtDate(c.job_complete_date)}</td><td>${fmtDate(c.paid_date)}</td>
-  </tr>`).join('')}</tbody>
+  <table><thead><tr><th>Project</th><th>Stage Amt</th><th>Net Sale</th><th>Base (2%)</th><th>Spiffs</th><th>Total Payout</th><th>Invoiced/Complete</th><th>Paid On</th></tr></thead>
+  <tbody>${bodyRows}</tbody>
   <tfoot><tr><td>TOTAL</td><td></td><td></td><td></td><td></td><td>${fmt$(totalPayout)}</td><td></td><td></td></tr></tfoot>
   </table></body></html>`);
   win.document.close();
@@ -986,8 +1116,8 @@ function renderBuildersTable() {
   tbody.innerHTML = builders.map(b => {
     const overdue = b.next_contact_date && b.next_contact_date < today;
     const openLeads = state.leads.filter(l =>
-      l.status !== 'Lost' && l.status !== 'Sold' &&
-      (l.job_name||'').toLowerCase().includes((b.company_name||'').toLowerCase())
+      l.status !== 'Lost' && l.status !== 'Sold' && l.status !== 'Sold (Delayed)' &&
+      l.builder_id === b.builder_id
     ).length;
     return `<tr class="${overdue ? 'overdue-row' : ''}" data-id="${b.builder_id}">
       <td><strong>${esc(b.company_name)}</strong></td>
@@ -1268,7 +1398,7 @@ function statusBadge(status) {
 }
 
 function typeBadge(type) {
-  const map = { 'New Construction':'badge-nc', 'Remodel':'badge-remodel', 'Changeout':'badge-changeout' };
+  const map = { 'New Construction':'badge-nc', 'Remodel':'badge-remodel', 'Changeout':'badge-changeout', 'Service & Add-Ons':'badge-service' };
   return `<span class="badge ${map[type]||'badge-bid'}">${esc(type||'—')}</span>`;
 }
 
