@@ -985,12 +985,13 @@ function applyCommissionFilters() {
     const { type, c } = row;
 
     if (type === 'flat') {
+      const isSvc = row.lead && row.lead.project_type === 'Service & Add-Ons';
       return `<tr>
-        <td><strong>${esc(c.job_name)}</strong></td>
+        <td><strong>${esc(c.job_name)}</strong>${isSvc ? ' <span class="badge badge-service" style="font-size:9pt">S&A</span>' : ''}</td>
         <td>${fmt$(c.sale_amount)}</td>
-        <td style="color:var(--amber)">${fmt$(c.total_acc_mem_revenue)}</td>
-        <td>${fmt$(c.net_sale)}</td>
-        <td>${fmt$(c.base_commission)}</td>
+        <td style="color:var(--amber)">${isSvc ? '—' : fmt$(c.total_acc_mem_revenue)}</td>
+        <td>${isSvc ? '—' : fmt$(c.net_sale)}</td>
+        <td>${isSvc ? '—' : fmt$(c.base_commission)}</td>
         <td>${fmt$(c.total_spiffs)}</td>
         <td style="font-weight:600;color:var(--green)">${fmt$(c.total_payout)}</td>
         <td>
@@ -1098,9 +1099,13 @@ function exportPayroll() {
   const bodyRows = exportRows.map(row => {
     if (row.type === 'flat') {
       const c = row.c;
+      const isSvc = row.lead && row.lead.project_type === 'Service & Add-Ons';
       return `<tr>
-        <td>${esc(c.job_name)}</td><td>${fmt$(c.sale_amount)}</td><td>${fmt$(c.net_sale)}</td>
-        <td>${fmt$(c.base_commission)}</td><td>${fmt$(c.total_spiffs)}</td>
+        <td>${esc(c.job_name)}${isSvc ? ' (S&amp;A)' : ''}</td>
+        <td>${fmt$(c.sale_amount)}</td>
+        <td>${isSvc ? '—' : fmt$(c.net_sale)}</td>
+        <td>${isSvc ? '—' : fmt$(c.base_commission)}</td>
+        <td>${fmt$(c.total_spiffs)}</td>
         <td style="font-weight:600">${fmt$(c.total_payout)}</td>
         <td>${fmtDate(c.job_complete_date)}</td><td>${fmtDate(c.paid_date)}</td>
       </tr>`;
