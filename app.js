@@ -29,7 +29,8 @@ async function apiGet(action, params = {}) {
   const url = new URL(SCRIPT_URL);
   url.searchParams.set('action', action);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString(), { redirect: 'follow' });
+  url.searchParams.set('_t', Date.now());
+  const res = await fetch(url.toString(), { redirect: 'follow', cache: 'no-store' });
   const data = await res.json();
   if (data.error) throw new Error(data.error);
   return data;
