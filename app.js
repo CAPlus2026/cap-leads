@@ -365,19 +365,23 @@ async function openLeadDrawer(lead) {
       </div>
     </div>` : ''}
 
+    ${lead.project_type !== 'Service & Add-Ons' ? `
     <div class="drawer-section">
       <h3>Milestones</h3>
       ${milestoneCheck('permit_pulled', 'Permit Pulled', lead.permit_pulled, lead.permit_date, lead.lead_id)}
       ${milestoneCheck('inspection_scheduled', 'Inspection Scheduled', lead.inspection_scheduled, lead.inspection_date, lead.lead_id)}
       ${milestoneCheck('equipment_ordered', 'Equipment Ordered', lead.equipment_ordered, lead.equipment_order_date, lead.lead_id)}
     </div>
+    ` : ''}
 
+    ${lead.project_type !== 'Service & Add-Ons' && (parseFloat(lead.billing_rough_amount) || parseFloat(lead.billing_trim_amount) || parseFloat(lead.billing_other_amount)) ? `
     <div class="drawer-section">
       <h3>Progress Billing</h3>
       ${billingRow('Rough-in', lead.billing_rough_amount, lead.billing_rough_date)}
       ${billingRow('Trim', lead.billing_trim_amount, lead.billing_trim_date)}
       ${billingRow('Other', lead.billing_other_amount, lead.billing_other_date)}
     </div>
+    ` : ''}
     ` : ''}
   `;
 
@@ -493,6 +497,9 @@ async function undoLeadComplete(lead) {
 
 function setupSoldDetailsModal() {
   document.getElementById('sold-details-close').addEventListener('click', closeSoldDetailsModal);
+  document.getElementById('sold-progress-billing').addEventListener('change', e => {
+    document.getElementById('sold-billing-fields').classList.toggle('hidden', !e.target.checked);
+  });
   document.getElementById('sold-details-skip').addEventListener('click', async () => {
     const form = document.getElementById('sold-details-form');
     const leadId = form.elements.lead_id.value;
@@ -517,7 +524,14 @@ function openSoldDetailsModal(lead, newStatus) {
   form.reset();
   form.elements.lead_id.value = lead.lead_id;
   form.elements.new_status.value = newStatus;
+  document.getElementById('sold-details-project-type').value = lead.project_type || '';
   document.getElementById('sold-item-rows').innerHTML = '';
+
+  const isService = lead.project_type === 'Service & Add-Ons';
+  document.getElementById('sold-progress-toggle-row').classList.toggle('hidden', isService);
+  document.getElementById('sold-billing-fields').classList.add('hidden');
+  document.getElementById('sold-progress-billing').checked = false;
+
   openModal('sold-details-overlay');
 }
 
@@ -529,9 +543,17 @@ async function saveSoldDetailsForm() {
     const fd = Object.fromEntries(new FormData(form));
     const lead = state.leads.find(l => l.lead_id === fd.lead_id);
     if (!lead) return;
+    const progressChecked = document.getElementById('sold-progress-billing').checked;
     const payload = { ...lead, status: fd.new_status, billing_name: fd.billing_name,
       est_start_month: fd.est_start_month, total_days_budgeted: fd.total_days_budgeted,
-      subs_needed: fd.subs_needed };
+      subs_needed: fd.subs_needed,
+      billing_rough_amount: progressChecked ? (fd.billing_rough_amount || '') : '',
+      billing_rough_date:   progressChecked ? (fd.billing_rough_date   || '') : '',
+      billing_trim_amount:  progressChecked ? (fd.billing_trim_amount  || '') : '',
+      billing_trim_date:    progressChecked ? (fd.billing_trim_date    || '') : '',
+      billing_other_amount: progressChecked ? (fd.billing_other_amount || '') : '',
+      billing_other_date:   progressChecked ? (fd.billing_other_date   || '') : '',
+    };
     await apiPost('updateLead', { payload });
     const items = collectSoldItems();
     if (items.length) await apiPost('saveLeadItems', { leadId: fd.lead_id, items });
@@ -654,6 +676,16 @@ function setupLeadModal() {
   document.getElementById('lead-form').querySelector('[name=project_type]').addEventListener('change', e => {
     const phase = e.target.value === 'Remodel' || e.target.value === 'New Construction';
     document.getElementById('phase-fields').classList.toggle('hidden', !phase);
+    const isService = e.target.value === 'Service & Add-Ons';
+    document.getElementById('lead-progress-billing-toggle-row').classList.toggle('hidden', isService);
+    if (isService) {
+      document.getElementById('form-progress-billing').checked = false;
+      document.getElementById('lead-billing-fields').classList.add('hidden');
+    }
+  });
+
+  document.getElementById('form-progress-billing').addEventListener('change', e => {
+    document.getElementById('lead-billing-fields').classList.toggle('hidden', !e.target.checked);
   });
 
   document.getElementById('lead-form').querySelector('[name=sale_amount]').addEventListener('input', updateCommissionPreview);
@@ -691,6 +723,12 @@ async function openEditLeadModal(lead) {
   document.getElementById('sold-fields').classList.toggle('hidden', !isSold);
   const phase = lead.project_type === 'Remodel' || lead.project_type === 'New Construction';
   document.getElementById('phase-fields').classList.toggle('hidden', !phase);
+
+  const isService = lead.project_type === 'Service & Add-Ons';
+  document.getElementById('lead-progress-billing-toggle-row').classList.toggle('hidden', isService);
+  const hasBilling = !!(parseFloat(lead.billing_rough_amount) || parseFloat(lead.billing_trim_amount) || parseFloat(lead.billing_other_amount));
+  document.getElementById('form-progress-billing').checked = !isService && hasBilling;
+  document.getElementById('lead-billing-fields').classList.toggle('hidden', isService || !hasBilling);
 
   // Load existing items
   document.getElementById('item-rows').innerHTML = '';

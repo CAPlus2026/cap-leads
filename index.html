@@ -320,35 +320,43 @@
             </div>
           </div>
 
-          <div class="form-divider">Progress Billing</div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Rough-in Amount</label>
-              <input type="number" name="billing_rough_amount" step="0.01" min="0">
-            </div>
-            <div class="form-group">
-              <label>Rough-in Date</label>
-              <input type="date" name="billing_rough_date">
-            </div>
+          <div id="lead-progress-billing-toggle-row" class="form-group" style="margin-top:8px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+              <input type="checkbox" id="form-progress-billing" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue)">
+              Progress Billing?
+            </label>
           </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Trim Amount</label>
-              <input type="number" name="billing_trim_amount" step="0.01" min="0">
+          <div id="lead-billing-fields" class="hidden">
+            <div class="form-divider">Progress Billing Stages</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Rough-in Amount</label>
+                <input type="number" name="billing_rough_amount" step="0.01" min="0">
+              </div>
+              <div class="form-group">
+                <label>Rough-in Date</label>
+                <input type="date" name="billing_rough_date">
+              </div>
             </div>
-            <div class="form-group">
-              <label>Trim Date</label>
-              <input type="date" name="billing_trim_date">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Trim Amount</label>
+                <input type="number" name="billing_trim_amount" step="0.01" min="0">
+              </div>
+              <div class="form-group">
+                <label>Trim Date</label>
+                <input type="date" name="billing_trim_date">
+              </div>
             </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Other / Misc Amount</label>
-              <input type="number" name="billing_other_amount" step="0.01" min="0">
-            </div>
-            <div class="form-group">
-              <label>Other Date</label>
-              <input type="date" name="billing_other_date">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Other / Misc Amount</label>
+                <input type="number" name="billing_other_amount" step="0.01" min="0">
+              </div>
+              <div class="form-group">
+                <label>Other Date</label>
+                <input type="date" name="billing_other_date">
+              </div>
             </div>
           </div>
         </div><!-- /sold-fields -->
@@ -465,6 +473,7 @@
       <form id="sold-details-form" autocomplete="off">
         <input type="hidden" name="lead_id">
         <input type="hidden" name="new_status">
+        <input type="hidden" name="project_type" id="sold-details-project-type">
         <div class="form-row">
           <div class="form-group">
             <label>Customer / Billing Name</label>
@@ -496,6 +505,45 @@
           </div>
           <div id="sold-item-rows"></div>
           <button type="button" class="btn-add-item" id="btn-add-sold-item">+ Add Item</button>
+        </div>
+        <div id="sold-progress-toggle-row" class="form-group" style="margin-top:8px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+            <input type="checkbox" id="sold-progress-billing" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue)">
+            Progress Billing?
+          </label>
+        </div>
+        <div id="sold-billing-fields" class="hidden">
+          <div class="form-divider">Progress Billing Stages</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Rough-in Amount</label>
+              <input type="number" name="billing_rough_amount" step="0.01" min="0">
+            </div>
+            <div class="form-group">
+              <label>Rough-in Date</label>
+              <input type="date" name="billing_rough_date">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Trim Amount</label>
+              <input type="number" name="billing_trim_amount" step="0.01" min="0">
+            </div>
+            <div class="form-group">
+              <label>Trim Date</label>
+              <input type="date" name="billing_trim_date">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Other / Misc Amount</label>
+              <input type="number" name="billing_other_amount" step="0.01" min="0">
+            </div>
+            <div class="form-group">
+              <label>Other Date</label>
+              <input type="date" name="billing_other_date">
+            </div>
+          </div>
         </div>
       </form>
     </div>
