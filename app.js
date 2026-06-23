@@ -1072,14 +1072,23 @@ async function updateCommissionField(leadId, field, value) {
 
 function exportPayroll() {
   const allRows = filteredCommission();
-  const rows = allRows.filter(c => c.job_complete_date && c.job_complete_date !== '');
-  if (!rows.length) { showToast('No completed jobs to export for this period', true); return; }
-
   const period = state.commFilters.period !== 'all' ? state.commFilters.period : 'All Periods';
-  const totalPayout = rows.reduce((s,c) => s+(parseFloat(c.total_payout)||0),0);
-  const expanded = expandCommissionRows(rows);
+  const expanded = expandCommissionRows(allRows);
 
-  const bodyRows = expanded.map(row => {
+  // For flat jobs: include when job_complete_date is set
+  // For progress billing stages: include when the stage has a billing date (invoiced)
+  const exportRows = expanded.filter(row => {
+    if (row.type === 'flat')   return row.c.job_complete_date && row.c.job_complete_date !== '';
+    if (row.type === 'parent') return false; // parent header rows are rebuilt below per included stages
+    if (row.type === 'stage')  return !!row.stage.date; // include stage if billing date exists
+    return false;
+  });
+
+  if (!exportRows.length) { showToast('No invoiced or completed jobs to export for this period', true); return; }
+
+  // Group stage rows under their parent job for display
+  const seenParents = new Set();
+  const bodyRows = exportRows.map(row => {
     if (row.type === 'flat') {
       const c = row.c;
       return `<tr>
@@ -1089,28 +1098,34 @@ function exportPayroll() {
         <td>${fmtDate(c.job_complete_date)}</td><td>${fmtDate(c.paid_date)}</td>
       </tr>`;
     }
-    if (row.type === 'parent') {
-      const c = row.c;
-      return `<tr style="background:#f8fafc">
-        <td><strong>${esc(c.job_name)}</strong> (Progress Billing)</td>
+    // stage row — prepend parent header row first time we see this job
+    const { c, stage, stageComm, stageSpiff, stagePayout } = row;
+    let html = '';
+    if (!seenParents.has(c.lead_id)) {
+      seenParents.add(c.lead_id);
+      html += `<tr style="background:#f8fafc">
+        <td><strong>${esc(c.job_name)}</strong> <span style="font-size:11px;color:#6b7280">(Progress Billing)</span></td>
         <td>${fmt$(c.sale_amount)}</td><td>${fmt$(c.net_sale)}</td>
         <td>${fmt$(c.base_commission)}</td><td>${fmt$(c.total_spiffs)}</td>
         <td style="font-weight:600">${fmt$(c.total_payout)}</td>
-        <td>${fmtDate(c.job_complete_date)}</td><td>—</td>
+        <td>${fmtDate(c.job_complete_date)||'In Progress'}</td><td>—</td>
       </tr>`;
     }
-    // stage row
-    const { c, stage, stageComm, stageSpiff, stagePayout } = row;
-    return `<tr style="background:#f1f5f9;font-size:12px">
+    html += `<tr style="background:#f1f5f9;font-size:12px">
       <td style="padding-left:28px">↳ ${esc(stage.label)}${stage.withSpiff ? ' +spiff' : ''}</td>
       <td>${fmt$(stage.amt)}</td><td></td>
       <td>${fmt$(stageComm)}</td>
       <td>${stage.withSpiff ? fmt$(stageSpiff) : '—'}</td>
       <td style="font-weight:600">${fmt$(stagePayout)}</td>
-      <td>${stage.date ? fmtDate(stage.date) : '⚠ Not Invoiced'}</td>
+      <td>${fmtDate(stage.date)}</td>
       <td>${fmtDate(stage.paidDate)}</td>
     </tr>`;
+    return html;
   }).join('');
+
+  const totalPayout = exportRows
+    .filter(r => r.type === 'flat').reduce((s,r) => s+(parseFloat(r.c.total_payout)||0),0)
+    + exportRows.filter(r => r.type === 'stage').reduce((s,r) => s+r.stagePayout,0);
 
   const win = window.open('', '_blank');
   win.document.write(`<!DOCTYPE html><html><head><title>CAP Payroll – ${period}</title>
@@ -1121,7 +1136,7 @@ function exportPayroll() {
   td{padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:13px}
   tfoot td{font-weight:700;color:#0F6E56;border-top:2px solid #0F6E56}
   @media print{button{display:none}}</style></head><body>
-  <h1>CAP Commercial – Commission Payroll</h1>
+  <h1>CAP – Commission Payroll</h1>
   <h2>Period: ${period} · Generated: ${new Date().toLocaleDateString()}</h2>
   <button onclick="window.print()" style="background:#185FA5;color:white;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;margin-bottom:16px">🖨 Print / Save PDF</button>
   <table><thead><tr><th>Project</th><th>Stage Amt</th><th>Net Sale</th><th>Base (2%)</th><th>Spiffs</th><th>Total Payout</th><th>Invoiced/Complete</th><th>Paid On</th></tr></thead>
