@@ -102,13 +102,19 @@ function getLeadItems(ss, leadId) {
 
 function saveLeadItems(ss, leadId, items) {
   const sheet = ss.getSheetByName('Lead Items');
+  const spiffRates = sheetToObjects(ss.getSheetByName('Spiff Rates'));
   const headers = getHeaders(sheet);
   deleteRowsWhere(sheet, 1, leadId);
   items.forEach(item => {
+    const rate = spiffRates.find(r => r.item_name === item.item_name) || {};
+    const qty = parseFloat(item.quantity) || 1;
     item.item_id = generateId('ITEM');
     item.lead_id = leadId;
+    item.total_revenue = (parseFloat(rate.sale_price) || 0) * qty;
+    item.total_spiff = (parseFloat(rate.spiff_amount) || 0) * qty;
     sheet.appendRow(headers.map(h => item[h] !== undefined ? item[h] : ''));
   });
+  recalcCommission(ss, leadId);
   return { success: true };
 }
 
@@ -141,27 +147,67 @@ function syncCommission(ss, lead) {
   const sheet = ss.getSheetByName('Commission');
   const headers = getHeaders(sheet);
   const rowNum = findRowById(sheet, 0, lead.lead_id);
-  if (!rowNum) { addToCommission(ss, lead); return; }
+  if (!rowNum) { addToCommission(ss, lead); }
+  const freshRow = findRowById(sheet, 0, lead.lead_id);
+  if (!freshRow) return;
   const ji = headers.indexOf('job_name');
   const si = headers.indexOf('sale_amount');
   const ci  = headers.indexOf('job_complete_date');
   const ppi = headers.indexOf('pay_period');
-  if (ji >= 0) sheet.getRange(rowNum, ji + 1).setValue(lead.job_name);
-  if (si >= 0) sheet.getRange(rowNum, si + 1).setValue(lead.sale_amount);
+  if (ji >= 0) sheet.getRange(freshRow, ji + 1).setValue(lead.job_name);
+  if (si >= 0) sheet.getRange(freshRow, si + 1).setValue(lead.sale_amount);
   if (ci >= 0 && lead.job_complete_date) {
-    sheet.getRange(rowNum, ci + 1).setValue(lead.job_complete_date);
-    // Auto-set pay_period to YYYY-MM of the completion date
+    sheet.getRange(freshRow, ci + 1).setValue(lead.job_complete_date);
     if (ppi >= 0) {
       const d = new Date(lead.job_complete_date);
       const payPeriod = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-      sheet.getRange(rowNum, ppi + 1).setValue(payPeriod);
+      sheet.getRange(freshRow, ppi + 1).setValue(payPeriod);
     }
   }
-  // If completion date is cleared, clear pay_period too
   if (ci >= 0 && lead.job_complete_date === '') {
-    sheet.getRange(rowNum, ci + 1).setValue('');
-    if (ppi >= 0) sheet.getRange(rowNum, ppi + 1).setValue('');
+    sheet.getRange(freshRow, ci + 1).setValue('');
+    if (ppi >= 0) sheet.getRange(freshRow, ppi + 1).setValue('');
   }
+  recalcCommission(ss, lead.lead_id);
+}
+
+function recalcCommission(ss, leadId) {
+  const commSheet = ss.getSheetByName('Commission');
+  const commHeaders = getHeaders(commSheet);
+  const rowNum = findRowById(commSheet, 0, leadId);
+  if (!rowNum) return;
+
+  // Get sale amount and project type from Leads sheet
+  const leadsSheet = ss.getSheetByName('Leads');
+  const leadRowNum = findRowById(leadsSheet, 0, leadId);
+  const leadHeaders = getHeaders(leadsSheet);
+  const ptIdx = leadHeaders.indexOf('project_type');
+  const projectType = leadRowNum && ptIdx >= 0 ? leadsSheet.getRange(leadRowNum, ptIdx + 1).getValue() : '';
+  const isService = projectType === 'Service & Add-Ons';
+
+  const si = commHeaders.indexOf('sale_amount');
+  const saleAmount = si >= 0 ? (parseFloat(commSheet.getRange(rowNum, si + 1).getValue()) || 0) : 0;
+
+  // Sum Lead Items for this lead
+  const items = sheetToObjects(ss.getSheetByName('Lead Items')).filter(i => i.lead_id === leadId);
+  const totalAccRev = isService ? 0 : items.reduce((s, i) => s + (parseFloat(i.total_revenue) || 0), 0);
+  const totalSpiffs = items.reduce((s, i) => s + (parseFloat(i.total_spiff) || 0), 0);
+  const netSale     = isService ? 0 : saleAmount - totalAccRev;
+  const baseComm    = isService ? 0 : netSale * 0.02;
+  const totalPayout = isService ? totalSpiffs : baseComm + totalSpiffs;
+
+  const updates = {
+    total_acc_mem_revenue: totalAccRev,
+    net_sale:              netSale,
+    base_commission:       baseComm,
+    total_spiffs:          totalSpiffs,
+    total_payout:          totalPayout,
+    payment_status:        'Pending',
+  };
+  Object.entries(updates).forEach(([field, val]) => {
+    const ci = commHeaders.indexOf(field);
+    if (ci >= 0) commSheet.getRange(rowNum, ci + 1).setValue(val);
+  });
 }
 
 function updateCommission(ss, payload) {
@@ -340,6 +386,29 @@ function step10_AddBuilderToLeads() {
   Logger.log('step10_AddBuilderToLeads complete.');
 }
 
+// ─── CLEAR ALL DATA (run once to wipe test data) ─────────────────────────────
+
+function clearAllData() {
+  const ss = SpreadsheetApp.openById(SS_ID);
+  const tabs = ['Leads', 'Commission', 'Lead Items', 'Follow-Up Log', 'Builders', 'Builder Log'];
+  tabs.forEach(name => {
+    const sheet = ss.getSheetByName(name);
+    if (!sheet) return;
+    const lastRow = sheet.getLastRow();
+    const totalRows = sheet.getMaxRows();
+    if (lastRow > 1) {
+      // Clear content from data rows to avoid the "can't delete all non-frozen rows" error
+      sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clearContent();
+      // Delete extra blank rows if there are more than 2 total
+      if (totalRows > 2) {
+        sheet.deleteRows(3, totalRows - 2);
+      }
+    }
+    Logger.log('Cleared: ' + name);
+  });
+  Logger.log('clearAllData complete.');
+}
+
 // ─── ADD COLUMNS TO LEADS (run once) ──────────────────────────────────────────
 
 function step8_AddColumns() {
@@ -404,8 +473,16 @@ function findRowById(sheet, colIndex, id) {
 
 function deleteRowsWhere(sheet, colIndex, value) {
   const data = sheet.getDataRange().getValues();
+  const matchingRows = [];
   for (let i = data.length - 1; i >= 1; i--) {
-    if (String(data[i][colIndex]) === String(value)) sheet.deleteRow(i + 1);
+    if (String(data[i][colIndex]) === String(value)) matchingRows.push(i + 1);
+  }
+  const totalDataRows = data.length - 1;
+  if (matchingRows.length >= totalDataRows) {
+    // Clearing instead of deleting to avoid "can't delete all non-frozen rows" error
+    sheet.getRange(2, 1, totalDataRows, sheet.getLastColumn()).clearContent();
+  } else {
+    matchingRows.forEach(row => sheet.deleteRow(row));
   }
 }
 

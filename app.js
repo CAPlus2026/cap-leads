@@ -295,12 +295,13 @@ async function openLeadDrawer(lead) {
     catch(e) { items = []; }
   }
 
+  const isService = lead.project_type === 'Service & Add-Ons';
   const accRev   = items.reduce((s, i) => s + (parseFloat(i.total_revenue) || 0), 0);
   const spiffs   = items.reduce((s, i) => s + (parseFloat(i.total_spiff)   || 0), 0);
   const saleAmt  = parseFloat(lead.sale_amount) || 0;
-  const netSale  = saleAmt - accRev;
-  const baseComm = netSale * 0.02;
-  const totalPayout = baseComm + spiffs;
+  const netSale  = isService ? 0 : saleAmt - accRev;
+  const baseComm = isService ? 0 : netSale * 0.02;
+  const totalPayout = isService ? spiffs : baseComm + spiffs;
 
   document.getElementById('drawer-title').textContent = lead.job_name;
 
@@ -346,12 +347,17 @@ async function openLeadDrawer(lead) {
     <div class="drawer-section">
       <h3>Commission / Payout</h3>
       <div class="commission-box">
+        ${isService ? `
+        <div class="comm-row"><span>Spiffs</span><span>${fmt$(spiffs)}</span></div>
+        <div class="comm-row total"><span>Total Payout</span><span>${fmt$(totalPayout)}</span></div>
+        ` : `
         <div class="comm-row"><span>Sale Amount</span><span>${fmt$(saleAmt)}</span></div>
         <div class="comm-row"><span>− Acc/Mem Revenue</span><span style="color:var(--amber)">−${fmt$(accRev)}</span></div>
         <div class="comm-row"><span>Net Sale</span><span>${fmt$(netSale)}</span></div>
         <div class="comm-row"><span>Base Commission (2%)</span><span>${fmt$(baseComm)}</span></div>
         <div class="comm-row"><span>Spiffs</span><span>${fmt$(spiffs)}</span></div>
         <div class="comm-row total"><span>Total Payout</span><span>${fmt$(totalPayout)}</span></div>
+        `}
       </div>
     </div>
 
